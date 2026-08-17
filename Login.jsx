@@ -2,12 +2,7 @@ import { useState } from 'react'
 import { supabase } from './supabaseClient'
 
 const Mark = () => (
-  <svg className="mark" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect width="40" height="40" rx="9" fill="#E96A0C"/>
-    <path d="M8 27h6V16l7-6 5 4-4 4v9h4" stroke="white" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round"/>
-    <circle cx="13" cy="30" r="2.4" fill="white"/>
-    <circle cx="24" cy="30" r="2.4" fill="white"/>
-  </svg>
+  <div className="mark-plate mark-plate-lg"><img src="/logo.png" alt="Ilumsa" className="mark-img" /></div>
 )
 
 export default function Login() {
@@ -30,10 +25,7 @@ export default function Login() {
       <div className="login-card">
         <div className="login-brand">
           <Mark />
-          <div>
-            <div className="name">ILUMSA</div>
-            <div className="sub">ALZA HOMBRES</div>
-          </div>
+          <div className="sub">ALZA HOMBRES</div>
         </div>
         <h1>Gestión de flota</h1>
         <p>Ingresa con la cuenta que te creó la administradora para ver disponibilidad, tarifas y cotizar servicios.</p>

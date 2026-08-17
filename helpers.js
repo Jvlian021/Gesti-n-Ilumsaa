@@ -1,5 +1,13 @@
 export function isoDate(d) { return d.toISOString().slice(0, 10) }
 export function startOfWeek(d) { const x = new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate() - x.getDay()); return x }
+// Lunes de la semana que contiene la fecha d (semana laboral lunes-viernes)
+export function startOfWorkWeek(d) {
+  const x = new Date(d); x.setHours(0,0,0,0)
+  const day = x.getDay() // 0=Dom ... 6=Sáb
+  const diffToMonday = day === 0 ? -6 : 1 - day
+  x.setDate(x.getDate() + diffToMonday)
+  return x
+}
 export function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x }
 export function fmtMoney(n) { return '$' + Math.round(n || 0).toLocaleString('es-CL') }
 export const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']

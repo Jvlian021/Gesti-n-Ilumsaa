@@ -22,10 +22,12 @@ input,select{font-family:inherit;}
 #login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;
   background:radial-gradient(circle at 15% 20%, rgba(233,106,12,.14), transparent 45%),radial-gradient(circle at 85% 80%, rgba(37,99,168,.18), transparent 45%),var(--navy);padding:24px;}
 .login-card{width:100%;max-width:400px;background:var(--navy2);border:1px solid var(--navy3);border-radius:16px;padding:36px 32px 32px;box-shadow:0 20px 60px rgba(0,0,0,.35);}
-.login-brand{display:flex;align-items:center;gap:10px;margin-bottom:28px;}
-.login-brand .mark{width:38px;height:38px;flex-shrink:0;}
-.login-brand .name{color:#fff;font-weight:800;font-size:18px;line-height:1.1;}
+.login-brand{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-bottom:28px;}
 .login-brand .sub{color:var(--orange);font-size:11px;font-weight:700;letter-spacing:1.5px;}
+.mark-plate{background:#fff;border-radius:10px;padding:6px 10px;display:inline-flex;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,.15);}
+.mark-plate .mark-img{height:26px;width:auto;display:block;}
+.mark-plate-lg{padding:10px 16px;border-radius:12px;}
+.mark-plate-lg .mark-img{height:38px;}
 .login-card h1{color:#fff;font-size:19px;margin:0 0 6px;}
 .login-card p{color:#9AA6B8;font-size:13.5px;margin:0 0 22px;line-height:1.5;}
 .field{margin-bottom:16px;}
@@ -45,10 +47,8 @@ input,select{font-family:inherit;}
 #app{display:none;min-height:100vh;grid-template-columns:236px 1fr;}
 #app.show{display:grid;}
 .sidebar{background:var(--navy);color:#fff;padding:20px 14px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;}
-.brand{display:flex;align-items:center;gap:10px;padding:6px 8px 22px;}
-.brand .mark{width:32px;height:32px;flex-shrink:0;}
-.brand .name{font-weight:800;font-size:15px;line-height:1.15;}
-.brand .sub{color:var(--orange);font-size:9.5px;font-weight:700;letter-spacing:1.4px;}
+.brand{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:6px 8px 22px;}
+.brand .sub{color:var(--orange);font-size:9.5px;font-weight:700;letter-spacing:1.4px;padding-left:2px;}
 .nav-group{flex:1;}
 .nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;color:#AEB9CB;font-size:13.5px;font-weight:600;margin-bottom:2px;border:none;background:none;width:100%;text-align:left;transition:all .12s;}
 .nav-item .ic{width:17px;text-align:center;font-size:14px;}
@@ -107,6 +107,8 @@ table.calendar td{padding:5px;vertical-align:middle;}
 .badge{display:flex;border-radius:7px;padding:7px 8px;font-size:11.5px;font-weight:700;text-align:center;min-height:34px;align-items:center;justify-content:center;}
 .badge.small-info{flex-direction:column;align-items:flex-start;text-align:left;font-size:11px;line-height:1.35;padding:6px 8px;}
 .badge.small-info .b-sub{font-weight:500;opacity:.85;font-size:10.5px;}
+.badge-clickable{cursor:pointer;transition:transform .12s,box-shadow .12s;}
+.badge-clickable:hover{box-shadow:inset 0 0 0 2px currentColor;transform:translateY(-1px);}
 .st-disponible{background:var(--green-bg);color:var(--green);}
 .st-reservado{background:var(--amber-bg);color:var(--amber);}
 .st-trabajo{background:var(--blue-bg);color:var(--blue);}
