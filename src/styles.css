@@ -24,10 +24,10 @@ input,select{font-family:inherit;}
 .login-card{width:100%;max-width:400px;background:var(--navy2);border:1px solid var(--navy3);border-radius:16px;padding:36px 32px 32px;box-shadow:0 20px 60px rgba(0,0,0,.35);}
 .login-brand{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-bottom:28px;}
 .login-brand .sub{color:var(--orange);font-size:11px;font-weight:700;letter-spacing:1.5px;}
-.mark-plate{background:#fff;border-radius:8px;padding:8px 12px;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.15);width:100%;}
-.mark-plate .mark-img{height:auto;width:100%;max-height:34px;object-fit:contain;display:block;}
-.mark-plate-lg{padding:14px 20px;border-radius:12px;width:auto;}
-.mark-plate-lg .mark-img{max-height:46px;width:auto;}
+.mark-plate{background:#fff;border-radius:9px;padding:12px 14px;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.15);width:100%;}
+.mark-plate .mark-img{height:auto;width:100%;max-height:48px;object-fit:contain;display:block;}
+.mark-plate-lg{padding:20px 26px;border-radius:12px;width:auto;}
+.mark-plate-lg .mark-img{max-height:64px;width:auto;}
 .login-card h1{color:#fff;font-size:19px;margin:0 0 6px;}
 .login-card p{color:#9AA6B8;font-size:13.5px;margin:0 0 22px;line-height:1.5;}
 .field{margin-bottom:16px;}
@@ -51,7 +51,7 @@ input,select{font-family:inherit;}
 .brand .sub{color:var(--orange);font-size:9.5px;font-weight:700;letter-spacing:1.4px;padding-left:2px;}
 .nav-group{flex:1;}
 .nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;color:#AEB9CB;font-size:13.5px;font-weight:600;margin-bottom:2px;border:none;background:none;width:100%;text-align:left;transition:all .12s;}
-.nav-item .ic{width:17px;text-align:center;font-size:14px;}
+.nav-item .ic{width:17px;text-align:center;font-size:14px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
 .nav-item:hover{background:#18233A;color:#fff;}
 .nav-item.active{background:var(--orange);color:#fff;}
 .sidebar-foot{border-top:1px solid #202C42;padding-top:12px;margin-top:12px;}

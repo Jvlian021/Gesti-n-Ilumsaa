@@ -2,13 +2,23 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from './supabaseClient'
 import Login from './Login.jsx'
 import {
-  isoDate, startOfWorkWeek, addDays, fmtMoney, DIAS, MESES,
+  isoDate, startOfWorkWeek, addDays, fmtMoney, fmtInputMoney, parseMoneyInput, DIAS, MESES,
   badgeClassFor, camionEstadoEnFecha, findAvailableTruck, priceFor,
 } from './helpers.js'
 
 const Mark = () => (
   <div className="mark-plate"><img src="/logo.png" alt="Ilumsa" className="mark-img" /></div>
 )
+
+// Iconos de navegación en SVG (más confiables entre navegadores que los emoji/símbolos unicode)
+const NavIcons = {
+  dashboard: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>,
+  camiones: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 16V6a1 1 0 0 1 1-1h9v11"/><path d="M13 9h4l4 4v3h-8"/><circle cx="7.5" cy="17.5" r="1.8"/><circle cx="17.5" cy="17.5" r="1.8"/></svg>,
+  reservas: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 3v3M16 3v3"/></svg>,
+  tarifas: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c0-1.1-1.34-2-3-2s-3 .9-3 2 1.34 1.6 3 2 3 .9 3 2-1.34 2-3 2-3-.9-3-2M12 6v2M12 16v2"/></svg>,
+  cotizaciones: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M9 12h6M9 16h6M9 8h3"/></svg>,
+  conductores: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.9 3.13-7 7-7s7 3.1 7 7"/></svg>,
+}
 
 export default function App() {
   const [session, setSession] = useState(undefined) // undefined = cargando, null = sin sesión
@@ -21,6 +31,7 @@ export default function App() {
   const [camiones, setCamiones] = useState([])
   const [reservas, setReservas] = useState([])
   const [cotizaciones, setCotizaciones] = useState([])
+  const [conductores, setConductores] = useState([])
   const [tarifaArriendo, setTarifaArriendo] = useState({})
   const [tarifasComunas, setTarifasComunas] = useState([])
 
@@ -39,18 +50,20 @@ export default function App() {
 
   // ---------- Carga de datos + realtime ----------
   const loadAll = useCallback(async () => {
-    const [c, r, q, ta, tc] = await Promise.all([
+    const [c, r, q, ta, tc, cd] = await Promise.all([
       supabase.from('camiones').select('*').order('nombre'),
       supabase.from('reservas').select('*'),
       supabase.from('cotizaciones').select('*'),
       supabase.from('tarifas_arriendo').select('*'),
       supabase.from('tarifas_comunas').select('*').order('comuna'),
+      supabase.from('conductores').select('*').order('nombre'),
     ])
     if (c.data) setCamiones(c.data)
     if (r.data) setReservas(r.data)
     if (q.data) setCotizaciones(q.data)
     if (ta.data) setTarifaArriendo(Object.fromEntries(ta.data.map(x => [x.tamano, x.valor])))
     if (tc.data) setTarifasComunas(tc.data)
+    if (cd.data) setConductores(cd.data)
   }, [])
 
   useEffect(() => {
@@ -62,6 +75,7 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cotizaciones' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tarifas_arriendo' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tarifas_comunas' }, loadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conductores' }, loadAll)
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [perfil, loadAll])
@@ -86,7 +100,7 @@ export default function App() {
             perfil={perfil} camiones={camiones} reservas={reservas} cotizaciones={cotizaciones}
             tarifaArriendo={tarifaArriendo} tarifasComunas={tarifasComunas}
             calWeekStart={calWeekStart} setCalWeekStart={setCalWeekStart}
-            setView={setView} toast={toast} openReserva={openReserva}
+            setView={setView} toast={toast} openReserva={openReserva} openReservaEdit={openReservaEdit}
           />
         )}
         {view === 'camiones' && (
@@ -94,9 +108,12 @@ export default function App() {
         )}
         {view === 'reservas' && (
           <Reservas
-            camiones={camiones} reservas={reservas} tarifasComunas={tarifasComunas}
+            camiones={camiones} reservas={reservas} conductores={conductores} tarifasComunas={tarifasComunas}
             perfil={perfil} toast={toast} reload={loadAll} openReserva={openReserva} openReservaEdit={openReservaEdit}
           />
+        )}
+        {view === 'conductores' && (
+          <Conductores conductores={conductores} isAdmin={isAdmin} toast={toast} reload={loadAll} />
         )}
         {view === 'tarifas' && (
           <Tarifas
@@ -114,7 +131,7 @@ export default function App() {
       </main>
       <ReservaModal
         show={reservaModal.show} onClose={closeReserva}
-        camiones={camiones} tarifasComunas={tarifasComunas}
+        camiones={camiones} tarifasComunas={tarifasComunas} conductores={conductores}
         perfil={perfil} toast={toast} reload={loadAll}
         initialCamionId={reservaModal.camionId} initialFecha={reservaModal.fecha} editReserva={reservaModal.editReserva}
       />
@@ -126,11 +143,12 @@ export default function App() {
 // ============================================================
 function Sidebar({ perfil, view, setView }) {
   const items = [
-    ['dashboard', '▣', 'Dashboard'],
-    ['camiones', '🚚', 'Camiones'],
-    ['reservas', '📅', 'Reservas'],
-    ['tarifas', '$', 'Tarifas'],
-    ['cotizaciones', '📋', 'Cotizaciones'],
+    ['dashboard', 'dashboard', 'Dashboard'],
+    ['camiones', 'camiones', 'Camiones'],
+    ['reservas', 'reservas', 'Reservas'],
+    ['conductores', 'conductores', 'Conductores'],
+    ['tarifas', 'tarifas', 'Tarifas'],
+    ['cotizaciones', 'cotizaciones', 'Cotizaciones'],
   ]
   return (
     <aside className="sidebar">
@@ -139,9 +157,9 @@ function Sidebar({ perfil, view, setView }) {
         <div className="sub">ALZA HOMBRES</div>
       </div>
       <nav className="nav-group">
-        {items.map(([key, ic, label]) => (
+        {items.map(([key, icKey, label]) => (
           <button key={key} className={`nav-item ${view === key ? 'active' : ''}`} onClick={() => setView(key)}>
-            <span className="ic">{ic}</span> {label}
+            <span className="ic">{NavIcons[icKey]}</span> {label}
           </button>
         ))}
       </nav>
@@ -160,7 +178,7 @@ function Sidebar({ perfil, view, setView }) {
 }
 
 // ============================================================
-function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, tarifasComunas, calWeekStart, setCalWeekStart, setView, toast, openReserva }) {
+function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, tarifasComunas, calWeekStart, setCalWeekStart, setView, toast, openReserva, openReservaEdit }) {
   const today = isoDate(new Date())
   const tomorrow = isoDate(addDays(new Date(), 1))
   const total = camiones.length
@@ -238,7 +256,15 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
                         const cls = badgeClassFor(est)
                         if (est === 'Reservado' || est === 'En Trabajo') {
                           const r = reservas.find(rr => rr.camion_id === c.id && rr.fecha === dIso)
-                          return <td key={+d}><div className={`badge small-info ${cls}`}>{est}<span className="b-sub">{r?.cliente}</span></div></td>
+                          return (
+                            <td key={+d}>
+                              <div
+                                className={`badge small-info ${cls} badge-clickable`}
+                                title="Clic para ver / editar esta reserva"
+                                onClick={() => r && openReservaEdit(r)}
+                              >{est}<span className="b-sub">{r?.cliente}</span></div>
+                            </td>
+                          )
                         }
                         if (est === 'Mantención' || est === 'Fuera de Servicio') {
                           return <td key={+d}><div className={`badge small-info ${cls}`}>{est}<span className="b-sub">{est === 'Mantención' && c.hasta ? 'Hasta ' + c.hasta.slice(8,10)+'/'+c.hasta.slice(5,7) : ''}</span></div></td>
@@ -291,7 +317,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
                 <div className="result-title"><span className="ok-ic">✓</span>{qResult.truck.nombre} disponible</div>
                 <div className="result-grid">
                   <div className="rl">Patente</div><div className="rv">{qResult.truck.patente}</div>
-                  <div className="rl">Valor arriendo (jornada)</div><div className="rv">{fmtMoney(qResult.price.arriendo)}</div>
+                  <div className="rl">Valor arriendo (por hora)</div><div className="rv">{fmtMoney(qResult.price.arriendo)}</div>
                   <div className="rl">Traslado a {qComuna}</div><div className="rv">{fmtMoney(qResult.price.traslado)}</div>
                 </div>
                 <div className="result-total"><span className="rt-lbl">Total referencial + IVA</span><span className="rt-val">{fmtMoney(qResult.price.total)}</span></div>
@@ -464,7 +490,86 @@ function Camiones({ camiones, isAdmin, toast, reload }) {
 }
 
 // ============================================================
-function Reservas({ camiones, reservas, tarifasComunas, perfil, toast, reload, openReserva, openReservaEdit }) {
+function Conductores({ conductores, isAdmin, toast, reload }) {
+  const [rows, setRows] = useState(conductores)
+  const [savingId, setSavingId] = useState(null)
+  const [nuevo, setNuevo] = useState({ nombre: '', telefono: '' })
+  useEffect(() => setRows(conductores), [conductores])
+
+  function editField(id, field, value) {
+    setRows(rs => rs.map(r => r.id === id ? { ...r, [field]: value } : r))
+  }
+
+  async function saveRow(id) {
+    const row = rows.find(r => r.id === id)
+    if (!row.nombre) { toast('El nombre no puede quedar vacío'); return }
+    setSavingId(id)
+    const { error } = await supabase.from('conductores').update({ nombre: row.nombre, telefono: row.telefono || null }).eq('id', id)
+    setSavingId(null)
+    if (error) { toast('No se pudo guardar'); return }
+    toast('Conductor actualizado'); reload()
+  }
+
+  async function addConductor() {
+    if (!nuevo.nombre.trim()) { toast('Escribe el nombre del conductor'); return }
+    const { error } = await supabase.from('conductores').insert({ nombre: nuevo.nombre.trim(), telefono: nuevo.telefono.trim() || null })
+    if (error) { toast('No se pudo agregar el conductor'); return }
+    setNuevo({ nombre: '', telefono: '' })
+    reload(); toast('Conductor agregado')
+  }
+
+  async function deleteConductor(c) {
+    if (!window.confirm(`¿Eliminar a "${c.nombre}" de la lista de conductores? Las reservas que tenía asignadas quedarán sin conductor.`)) return
+    const { error } = await supabase.from('conductores').delete().eq('id', c.id)
+    if (error) { toast('No se pudo eliminar'); return }
+    toast('Conductor eliminado'); reload()
+  }
+
+  return (
+    <>
+      <div className="toolbar">
+        <div><h1>Conductores</h1><div className="section-sub">{isAdmin ? 'Edita los datos y presiona Guardar en cada fila' : 'Conductores disponibles para asignar a una reserva'}</div></div>
+      </div>
+      <div className="card" style={{padding:0}}>
+        <table className="data">
+          <thead><tr><th>Nombre</th><th>Teléfono</th>{isAdmin && <th></th>}</tr></thead>
+          <tbody>
+            {!rows.length && <tr><td colSpan={3} style={{textAlign:'center',color:'var(--mute2)',padding:24}}>Aún no hay conductores cargados.</td></tr>}
+            {rows.map(c => (
+              <tr key={c.id}>
+                <td>{isAdmin
+                  ? <input type="text" value={c.nombre} onChange={e => editField(c.id, 'nombre', e.target.value)} style={{width:200}} />
+                  : <strong>{c.nombre}</strong>}
+                </td>
+                <td>{isAdmin
+                  ? <input type="text" value={c.telefono || ''} onChange={e => editField(c.id, 'telefono', e.target.value)} placeholder="+56 9 ..." style={{width:150}} />
+                  : (c.telefono || '—')}
+                </td>
+                {isAdmin && <td style={{display:'flex',gap:6}}>
+                  <button className="btn-dark btn-sm" disabled={savingId===c.id} onClick={() => saveRow(c.id)}>{savingId===c.id ? 'Guardando…' : 'Guardar'}</button>
+                  <button className="btn-danger btn-sm" onClick={() => deleteConductor(c)}>Eliminar</button>
+                </td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {isAdmin && (
+          <div style={{padding:16,borderTop:'1px solid var(--border)'}}>
+            <div className="section-sub" style={{margin:'0 0 10px'}}>Agregar un conductor nuevo</div>
+            <div className="quick-row" style={{gridTemplateColumns:'1.3fr 1fr auto'}}>
+              <div className="f-group"><label>Nombre</label><input type="text" value={nuevo.nombre} onChange={e => setNuevo({...nuevo, nombre: e.target.value})} placeholder="Nombre completo" /></div>
+              <div className="f-group"><label>Teléfono</label><input type="text" value={nuevo.telefono} onChange={e => setNuevo({...nuevo, telefono: e.target.value})} placeholder="+56 9 ..." /></div>
+              <button className="btn-dark" onClick={addConductor}>Agregar</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+// ============================================================
+function Reservas({ camiones, reservas, conductores, tarifasComunas, perfil, toast, reload, openReserva, openReservaEdit }) {
   const today = isoDate(new Date())
   const sorted = [...reservas].sort((a, b) => b.fecha.localeCompare(a.fecha))
 
@@ -483,16 +588,19 @@ function Reservas({ camiones, reservas, tarifasComunas, perfil, toast, reload, o
       </div>
       <div className="card" style={{padding:0}}>
         <table className="data">
-          <thead><tr><th>Cliente</th><th>Camión</th><th>Fecha</th><th>Comuna</th><th>Dirección</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Camión</th><th>Fecha</th><th>Hora</th><th>Conductor</th><th>Comuna</th><th>Dirección</th><th>Estado</th><th></th></tr></thead>
           <tbody>
-            {!sorted.length && <tr><td colSpan={7} style={{textAlign:'center',color:'var(--mute2)',padding:24}}>Aún no hay reservas.</td></tr>}
+            {!sorted.length && <tr><td colSpan={9} style={{textAlign:'center',color:'var(--mute2)',padding:24}}>Aún no hay reservas.</td></tr>}
             {sorted.map(r => {
               const cam = camiones.find(c => c.id === r.camion_id)
+              const cond = conductores.find(cd => cd.id === r.conductor_id)
               return (
                 <tr key={r.id}>
                   <td><strong>{r.cliente}</strong></td>
                   <td>{cam?.nombre || '—'}</td>
                   <td className="mono">{new Date(r.fecha + 'T00:00:00').toLocaleDateString('es-CL')}</td>
+                  <td className="mono">{r.hora ? r.hora.slice(0,5) : '—'}</td>
+                  <td>{cond?.nombre || '—'}</td>
                   <td>{r.comuna}</td>
                   <td>{r.direccion}</td>
                   <td><span className={`tag ${badgeClassFor(r.estado)}`}>{r.estado}</span></td>
@@ -511,9 +619,9 @@ function Reservas({ camiones, reservas, tarifasComunas, perfil, toast, reload, o
 }
 
 // ============================================================
-function ReservaModal({ show, onClose, camiones, tarifasComunas, perfil, toast, reload, initialCamionId, initialFecha, editReserva }) {
+function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, perfil, toast, reload, initialCamionId, initialFecha, editReserva }) {
   const today = isoDate(new Date())
-  const [form, setForm] = useState({ camionId: '', cliente: '', fecha: today, comuna: '', direccion: '', estado: 'Reservado' })
+  const [form, setForm] = useState({ camionId: '', cliente: '', fecha: today, hora: '', comuna: '', direccion: '', estado: 'Reservado', conductorId: '', descripcion: '' })
   const isEdit = !!editReserva
 
   useEffect(() => {
@@ -523,16 +631,19 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, perfil, toast, 
         camionId: editReserva.camion_id || camiones[0]?.id || '',
         cliente: editReserva.cliente || '',
         fecha: editReserva.fecha || today,
+        hora: editReserva.hora ? editReserva.hora.slice(0,5) : '',
         comuna: editReserva.comuna || tarifasComunas[0]?.comuna || '',
         direccion: editReserva.direccion || '',
         estado: editReserva.estado || 'Reservado',
+        conductorId: editReserva.conductor_id || '',
+        descripcion: editReserva.descripcion || '',
       })
     } else {
       setForm(f => ({
         ...f,
         camionId: initialCamionId || camiones[0]?.id || '',
         fecha: initialFecha || today,
-        cliente: '', direccion: '',
+        hora: '', cliente: '', direccion: '', conductorId: '', descripcion: '',
         comuna: f.comuna || tarifasComunas[0]?.comuna || '',
       }))
     }
@@ -543,8 +654,9 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, perfil, toast, 
   async function save() {
     if (!form.cliente || !form.fecha || !form.direccion) { toast('Completa cliente, fecha y dirección'); return }
     const payload = {
-      camion_id: form.camionId, cliente: form.cliente, fecha: form.fecha, comuna: form.comuna,
-      direccion: form.direccion, estado: form.estado,
+      camion_id: form.camionId, cliente: form.cliente, fecha: form.fecha, hora: form.hora || null,
+      comuna: form.comuna, direccion: form.direccion, estado: form.estado,
+      conductor_id: form.conductorId || null, descripcion: form.descripcion || null,
     }
     const { error } = isEdit
       ? await supabase.from('reservas').update(payload).eq('id', editReserva.id)
@@ -574,17 +686,31 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, perfil, toast, 
           </select>
         </div>
         <div className="f-group"><label>Cliente</label><input type="text" value={form.cliente} onChange={e => setForm({...form, cliente: e.target.value})} placeholder="Nombre cliente / empresa" /></div>
-        <div className="f-group"><label>Fecha</label><input type="date" value={form.fecha} onChange={e => setForm({...form, fecha: e.target.value})} /></div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div className="f-group"><label>Fecha</label><input type="date" value={form.fecha} onChange={e => setForm({...form, fecha: e.target.value})} /></div>
+          <div className="f-group"><label>Hora</label><input type="time" value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} /></div>
+        </div>
         <div className="f-group"><label>Comuna</label>
           <select value={form.comuna} onChange={e => setForm({...form, comuna: e.target.value})}>
             {tarifasComunas.map(c => <option key={c.id} value={c.comuna}>{c.comuna}</option>)}
           </select>
         </div>
         <div className="f-group"><label>Dirección</label><input type="text" value={form.direccion} onChange={e => setForm({...form, direccion: e.target.value})} placeholder="Calle, número" /></div>
-        <div className="f-group"><label>Estado</label>
-          <select value={form.estado} onChange={e => setForm({...form, estado: e.target.value})}>
-            <option value="Reservado">Reservado</option><option value="En Trabajo">En Trabajo</option>
-          </select>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div className="f-group"><label>Conductor</label>
+            <select value={form.conductorId} onChange={e => setForm({...form, conductorId: e.target.value})}>
+              <option value="">Sin asignar</option>
+              {conductores.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+          </div>
+          <div className="f-group"><label>Estado</label>
+            <select value={form.estado} onChange={e => setForm({...form, estado: e.target.value})}>
+              <option value="Reservado">Reservado</option><option value="En Trabajo">En Trabajo</option>
+            </select>
+          </div>
+        </div>
+        <div className="f-group"><label>Descripción</label>
+          <textarea value={form.descripcion} onChange={e => setForm({...form, descripcion: e.target.value})} placeholder="Detalles del trabajo, notas para el conductor, etc." rows={3} style={{width:'100%',padding:'9px 10px',border:'1px solid var(--border)',borderRadius:7,fontSize:'13.5px',fontFamily:'inherit',resize:'vertical'}} />
         </div>
         <div className="modal-actions">
           {isEdit
@@ -646,15 +772,15 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
       </div>
       {!isAdmin && <div className="readonly-note">Solo la administradora puede editar las tarifas. Puedes consultarlas libremente.</div>}
       <div className="card">
-        <div className="card-head"><h2>Arriendo por jornada (según tamaño)</h2></div>
+        <div className="card-head"><h2>Arriendo por hora (según tamaño)</h2></div>
         <table className="data">
-          <thead><tr><th>Tamaño</th><th>Valor jornada</th></tr></thead>
+          <thead><tr><th>Tamaño</th><th>Valor por hora</th></tr></thead>
           <tbody>
             {[13, 20, 28].map(sz => (
               <tr key={sz}>
                 <td>{sz} metros</td>
                 <td>{isAdmin
-                  ? <input type="number" value={arriendo[sz] || 0} onChange={e => setArriendo({...arriendo, [sz]: e.target.value})} />
+                  ? <input type="text" inputMode="numeric" value={fmtInputMoney(arriendo[sz])} onChange={e => setArriendo({...arriendo, [sz]: parseMoneyInput(e.target.value)})} />
                   : <span className="mono">{fmtMoney(arriendo[sz])}</span>}
                 </td>
               </tr>
@@ -684,7 +810,7 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
                   <td><strong>{c.comuna}</strong></td>
                   {['p13', 'p20', 'p28'].map(k => (
                     <td key={k}>{isAdmin
-                      ? <input type="number" value={comunas[i][k]} onChange={e => { const cp = [...comunas]; cp[i] = {...cp[i], [k]: e.target.value}; setComunas(cp) }} />
+                      ? <input type="text" inputMode="numeric" value={fmtInputMoney(comunas[i][k])} onChange={e => { const cp = [...comunas]; cp[i] = {...cp[i], [k]: parseMoneyInput(e.target.value)}; setComunas(cp) }} />
                       : <span className="mono">{fmtMoney(c[k])}</span>}
                     </td>
                   ))}
@@ -699,9 +825,9 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
             <div className="section-sub" style={{margin:'0 0 10px'}}>Agregar una comuna nueva a la lista</div>
             <div className="quick-row" style={{gridTemplateColumns:'1.3fr 1fr 1fr 1fr auto'}}>
               <div className="f-group"><label>Comuna</label><input type="text" value={nueva.comuna} onChange={e => setNueva({...nueva, comuna: e.target.value})} placeholder="Nombre de la comuna" /></div>
-              <div className="f-group"><label>13 m</label><input type="number" value={nueva.p13} onChange={e => setNueva({...nueva, p13: e.target.value})} /></div>
-              <div className="f-group"><label>20 m</label><input type="number" value={nueva.p20} onChange={e => setNueva({...nueva, p20: e.target.value})} /></div>
-              <div className="f-group"><label>28 m</label><input type="number" value={nueva.p28} onChange={e => setNueva({...nueva, p28: e.target.value})} /></div>
+              <div className="f-group"><label>13 m</label><input type="text" inputMode="numeric" value={nueva.p13 === '' ? '' : fmtInputMoney(nueva.p13)} onChange={e => setNueva({...nueva, p13: parseMoneyInput(e.target.value)})} placeholder="0" /></div>
+              <div className="f-group"><label>20 m</label><input type="text" inputMode="numeric" value={nueva.p20 === '' ? '' : fmtInputMoney(nueva.p20)} onChange={e => setNueva({...nueva, p20: parseMoneyInput(e.target.value)})} placeholder="0" /></div>
+              <div className="f-group"><label>28 m</label><input type="text" inputMode="numeric" value={nueva.p28 === '' ? '' : fmtInputMoney(nueva.p28)} onChange={e => setNueva({...nueva, p28: parseMoneyInput(e.target.value)})} placeholder="0" /></div>
               <button className="btn-dark" onClick={addComuna}>Agregar</button>
             </div>
           </div>
@@ -785,7 +911,7 @@ function Cotizaciones({ camiones, reservas, cotizaciones, tarifaArriendo, tarifa
             <div className="result-title"><span className="ok-ic">✓</span>{result.truck.nombre} · {size}m</div>
             <div className="result-grid">
               <div className="rl">Cliente</div><div className="rv">{cliente || '—'}</div>
-              <div className="rl">Arriendo (jornada)</div><div className="rv">{fmtMoney(result.price.arriendo)}</div>
+              <div className="rl">Arriendo (por hora)</div><div className="rv">{fmtMoney(result.price.arriendo)}</div>
               <div className="rl">Traslado a {comuna}</div><div className="rv">{fmtMoney(result.price.traslado)}</div>
             </div>
             <div className="result-total"><span className="rt-lbl">Total + IVA</span><span className="rt-val">{fmtMoney(result.price.total)}</span></div>

@@ -42,21 +42,32 @@ create table if not exists tarifas_comunas (
   p28 numeric not null default 0
 );
 
--- 5) Reservas
+-- 5) Conductores
+create table if not exists conductores (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  telefono text,
+  creado_en timestamptz default now()
+);
+
+-- 6) Reservas
 create table if not exists reservas (
   id uuid primary key default gen_random_uuid(),
   camion_id uuid references camiones(id) on delete set null,
+  conductor_id uuid references conductores(id) on delete set null,
   cliente text not null,
   fecha date not null,
+  hora time,
   comuna text not null,
   direccion text not null,
+  descripcion text,
   estado text not null default 'Reservado' check (estado in ('Reservado','En Trabajo')),
   valor numeric not null default 0,
   creado_por uuid references perfiles(id),
   creado_en timestamptz default now()
 );
 
--- 6) Cotizaciones
+-- 7) Cotizaciones
 create table if not exists cotizaciones (
   id uuid primary key default gen_random_uuid(),
   cliente text not null default 'Sin nombre',
@@ -77,6 +88,7 @@ alter table perfiles enable row level security;
 alter table camiones enable row level security;
 alter table tarifas_arriendo enable row level security;
 alter table tarifas_comunas enable row level security;
+alter table conductores enable row level security;
 alter table reservas enable row level security;
 alter table cotizaciones enable row level security;
 
@@ -85,6 +97,7 @@ create policy "leer perfiles" on perfiles for select to authenticated using (tru
 create policy "leer camiones" on camiones for select to authenticated using (true);
 create policy "leer tarifas_arriendo" on tarifas_arriendo for select to authenticated using (true);
 create policy "leer tarifas_comunas" on tarifas_comunas for select to authenticated using (true);
+create policy "leer conductores" on conductores for select to authenticated using (true);
 create policy "leer reservas" on reservas for select to authenticated using (true);
 create policy "leer cotizaciones" on cotizaciones for select to authenticated using (true);
 
@@ -93,14 +106,16 @@ create or replace function es_admin() returns boolean as $$
   select exists(select 1 from perfiles where id = auth.uid() and rol = 'Administradora');
 $$ language sql security definer;
 
--- Solo Administradora puede crear/editar/borrar camiones y tarifas
+-- Solo Administradora puede crear/editar/borrar camiones, tarifas y conductores
 create policy "admin escribe camiones" on camiones for all to authenticated using (es_admin()) with check (es_admin());
 create policy "admin escribe tarifas_arriendo" on tarifas_arriendo for all to authenticated using (es_admin()) with check (es_admin());
 create policy "admin escribe tarifas_comunas" on tarifas_comunas for all to authenticated using (es_admin()) with check (es_admin());
+create policy "admin escribe conductores" on conductores for all to authenticated using (es_admin()) with check (es_admin());
 
--- Cualquier usuario autenticado (vendedor o admin) puede crear reservas y cotizaciones
+-- Cualquier usuario autenticado (vendedor o admin) puede crear, editar y borrar reservas y cotizaciones
 create policy "crear reservas" on reservas for insert to authenticated with check (true);
 create policy "editar reservas" on reservas for update to authenticated using (true);
+create policy "eliminar reservas" on reservas for delete to authenticated using (true);
 create policy "crear cotizaciones" on cotizaciones for insert to authenticated with check (true);
 create policy "editar cotizaciones" on cotizaciones for update to authenticated using (true);
 

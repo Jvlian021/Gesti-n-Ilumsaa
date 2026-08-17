@@ -10,6 +10,9 @@ export function startOfWorkWeek(d) {
 }
 export function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x }
 export function fmtMoney(n) { return '$' + Math.round(n || 0).toLocaleString('es-CL') }
+// Para inputs editables: muestra "25.000" (sin $) y limpia lo que el usuario escriba a solo dígitos.
+export function fmtInputMoney(n) { return Math.round(Number(n) || 0).toLocaleString('es-CL') }
+export function parseMoneyInput(str) { return Number(String(str).replace(/[^\d]/g, '')) || 0 }
 export const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
 export const MESES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC']
 
