@@ -16,7 +16,7 @@ export default function App() {
   const [view, setView] = useState('dashboard')
   const [toastMsg, setToastMsg] = useState('')
   const [calWeekStart, setCalWeekStart] = useState(startOfWorkWeek(new Date()))
-  const [reservaModal, setReservaModal] = useState({ show: false, camionId: '', fecha: '' })
+  const [reservaModal, setReservaModal] = useState({ show: false, camionId: '', fecha: '', editReserva: null })
 
   const [camiones, setCamiones] = useState([])
   const [reservas, setReservas] = useState([])
@@ -67,7 +67,8 @@ export default function App() {
   }, [perfil, loadAll])
 
   function toast(msg) { setToastMsg(msg); setTimeout(() => setToastMsg(''), 2400) }
-  function openReserva(camionId, fecha) { setReservaModal({ show: true, camionId, fecha }) }
+  function openReserva(camionId, fecha) { setReservaModal({ show: true, camionId, fecha, editReserva: null }) }
+  function openReservaEdit(reserva) { setReservaModal({ show: true, camionId: reserva.camion_id, fecha: reserva.fecha, editReserva: reserva }) }
   function closeReserva() { setReservaModal(m => ({ ...m, show: false })) }
 
   if (session === undefined) return <div className="loading-screen">Cargando…</div>
@@ -94,7 +95,7 @@ export default function App() {
         {view === 'reservas' && (
           <Reservas
             camiones={camiones} reservas={reservas} tarifasComunas={tarifasComunas}
-            perfil={perfil} toast={toast} reload={loadAll} openReserva={openReserva}
+            perfil={perfil} toast={toast} reload={loadAll} openReserva={openReserva} openReservaEdit={openReservaEdit}
           />
         )}
         {view === 'tarifas' && (
@@ -115,7 +116,7 @@ export default function App() {
         show={reservaModal.show} onClose={closeReserva}
         camiones={camiones} tarifasComunas={tarifasComunas}
         perfil={perfil} toast={toast} reload={loadAll}
-        initialCamionId={reservaModal.camionId} initialFecha={reservaModal.fecha}
+        initialCamionId={reservaModal.camionId} initialFecha={reservaModal.fecha} editReserva={reservaModal.editReserva}
       />
       <div className={`toast ${toastMsg ? 'show' : ''}`}>{toastMsg}</div>
     </div>
@@ -372,6 +373,13 @@ function Camiones({ camiones, isAdmin, toast, reload }) {
     reload(); toast('Camión agregado')
   }
 
+  async function deleteTruck(c) {
+    if (!window.confirm(`¿Eliminar "${c.nombre}"? Esto no se puede deshacer. Sus reservas y cotizaciones pasadas quedarán sin camión asignado.`)) return
+    const { error } = await supabase.from('camiones').delete().eq('id', c.id)
+    if (error) { toast('No se pudo eliminar el camión'); return }
+    toast('Camión eliminado'); reload()
+  }
+
   return (
     <>
       <div className="toolbar">
@@ -417,7 +425,10 @@ function Camiones({ camiones, isAdmin, toast, reload }) {
                   ? <input type="date" value={c.hasta || ''} disabled={c.estado_general === 'Operativo'} onChange={e => editField(c.id, 'hasta', e.target.value)} style={{width:135}} />
                   : (c.hasta ? new Date(c.hasta+'T00:00:00').toLocaleDateString('es-CL') : '—')}
                 </td>
-                {isAdmin && <td><button className="btn-dark btn-sm" disabled={savingId===c.id} onClick={() => saveRow(c.id)}>{savingId===c.id ? 'Guardando…' : 'Guardar'}</button></td>}
+                {isAdmin && <td style={{display:'flex',gap:6}}>
+                  <button className="btn-dark btn-sm" disabled={savingId===c.id} onClick={() => saveRow(c.id)}>{savingId===c.id ? 'Guardando…' : 'Guardar'}</button>
+                  <button className="btn-danger btn-sm" onClick={() => deleteTruck(c)}>Eliminar</button>
+                </td>}
               </tr>
             ))}
           </tbody>
@@ -453,9 +464,16 @@ function Camiones({ camiones, isAdmin, toast, reload }) {
 }
 
 // ============================================================
-function Reservas({ camiones, reservas, tarifasComunas, perfil, toast, reload, openReserva }) {
+function Reservas({ camiones, reservas, tarifasComunas, perfil, toast, reload, openReserva, openReservaEdit }) {
   const today = isoDate(new Date())
   const sorted = [...reservas].sort((a, b) => b.fecha.localeCompare(a.fecha))
+
+  async function quickDelete(r) {
+    if (!window.confirm(`¿Eliminar la reserva de "${r.cliente}" (${new Date(r.fecha+'T00:00:00').toLocaleDateString('es-CL')})?`)) return
+    const { error } = await supabase.from('reservas').delete().eq('id', r.id)
+    if (error) { toast('No se pudo eliminar la reserva'); return }
+    toast('Reserva eliminada'); reload()
+  }
 
   return (
     <>
@@ -465,9 +483,9 @@ function Reservas({ camiones, reservas, tarifasComunas, perfil, toast, reload, o
       </div>
       <div className="card" style={{padding:0}}>
         <table className="data">
-          <thead><tr><th>Cliente</th><th>Camión</th><th>Fecha</th><th>Comuna</th><th>Dirección</th><th>Estado</th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Camión</th><th>Fecha</th><th>Comuna</th><th>Dirección</th><th>Estado</th><th></th></tr></thead>
           <tbody>
-            {!sorted.length && <tr><td colSpan={6} style={{textAlign:'center',color:'var(--mute2)',padding:24}}>Aún no hay reservas.</td></tr>}
+            {!sorted.length && <tr><td colSpan={7} style={{textAlign:'center',color:'var(--mute2)',padding:24}}>Aún no hay reservas.</td></tr>}
             {sorted.map(r => {
               const cam = camiones.find(c => c.id === r.camion_id)
               return (
@@ -478,6 +496,10 @@ function Reservas({ camiones, reservas, tarifasComunas, perfil, toast, reload, o
                   <td>{r.comuna}</td>
                   <td>{r.direccion}</td>
                   <td><span className={`tag ${badgeClassFor(r.estado)}`}>{r.estado}</span></td>
+                  <td style={{display:'flex',gap:6}}>
+                    <button className="btn-outline btn-sm" onClick={() => openReservaEdit(r)}>Editar</button>
+                    <button className="btn-danger btn-sm" onClick={() => quickDelete(r)}>Eliminar</button>
+                  </td>
                 </tr>
               )
             })}
@@ -489,31 +511,54 @@ function Reservas({ camiones, reservas, tarifasComunas, perfil, toast, reload, o
 }
 
 // ============================================================
-function ReservaModal({ show, onClose, camiones, tarifasComunas, perfil, toast, reload, initialCamionId, initialFecha }) {
+function ReservaModal({ show, onClose, camiones, tarifasComunas, perfil, toast, reload, initialCamionId, initialFecha, editReserva }) {
   const today = isoDate(new Date())
   const [form, setForm] = useState({ camionId: '', cliente: '', fecha: today, comuna: '', direccion: '', estado: 'Reservado' })
+  const isEdit = !!editReserva
 
   useEffect(() => {
     if (!show) return
-    setForm(f => ({
-      ...f,
-      camionId: initialCamionId || camiones[0]?.id || '',
-      fecha: initialFecha || today,
-      comuna: f.comuna || tarifasComunas[0]?.comuna || '',
-    }))
-  }, [show, initialCamionId, initialFecha]) // eslint-disable-line
+    if (editReserva) {
+      setForm({
+        camionId: editReserva.camion_id || camiones[0]?.id || '',
+        cliente: editReserva.cliente || '',
+        fecha: editReserva.fecha || today,
+        comuna: editReserva.comuna || tarifasComunas[0]?.comuna || '',
+        direccion: editReserva.direccion || '',
+        estado: editReserva.estado || 'Reservado',
+      })
+    } else {
+      setForm(f => ({
+        ...f,
+        camionId: initialCamionId || camiones[0]?.id || '',
+        fecha: initialFecha || today,
+        cliente: '', direccion: '',
+        comuna: f.comuna || tarifasComunas[0]?.comuna || '',
+      }))
+    }
+  }, [show, initialCamionId, initialFecha, editReserva]) // eslint-disable-line
 
   if (!show) return null
 
   async function save() {
     if (!form.cliente || !form.fecha || !form.direccion) { toast('Completa cliente, fecha y dirección'); return }
-    const { error } = await supabase.from('reservas').insert({
+    const payload = {
       camion_id: form.camionId, cliente: form.cliente, fecha: form.fecha, comuna: form.comuna,
-      direccion: form.direccion, estado: form.estado, valor: 0, creado_por: perfil.id,
-    })
+      direccion: form.direccion, estado: form.estado,
+    }
+    const { error } = isEdit
+      ? await supabase.from('reservas').update(payload).eq('id', editReserva.id)
+      : await supabase.from('reservas').insert({ ...payload, valor: 0, creado_por: perfil.id })
     if (error) { toast('No se pudo guardar la reserva'); return }
-    setForm(f => ({ ...f, cliente: '', direccion: '' }))
-    reload(); toast('Reserva guardada'); onClose()
+    reload(); toast(isEdit ? 'Reserva actualizada' : 'Reserva guardada'); onClose()
+  }
+
+  async function remove() {
+    if (!isEdit) return
+    if (!window.confirm(`¿Eliminar la reserva de "${editReserva.cliente}"?`)) return
+    const { error } = await supabase.from('reservas').delete().eq('id', editReserva.id)
+    if (error) { toast('No se pudo eliminar la reserva'); return }
+    reload(); toast('Reserva eliminada'); onClose()
   }
 
   const camionSel = camiones.find(c => c.id === form.camionId)
@@ -521,7 +566,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, perfil, toast, 
   return (
     <div className="modal-bg show">
       <div className="modal">
-        <h3>Nueva reserva</h3>
+        <h3>{isEdit ? 'Editar reserva' : 'Nueva reserva'}</h3>
         <div className="msub">{camionSel ? `${camionSel.nombre} · ${new Date(form.fecha + 'T00:00:00').toLocaleDateString('es-CL')}` : 'Elige un camión disponible en la fecha indicada.'}</div>
         <div className="f-group"><label>Camión</label>
           <select value={form.camionId} onChange={e => setForm({...form, camionId: e.target.value})}>
@@ -542,9 +587,12 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, perfil, toast, 
           </select>
         </div>
         <div className="modal-actions">
-          <button className="btn-outline" onClick={onClose}>Cancelar</button>
-          <button className="btn-orange" onClick={save}>Guardar reserva</button>
+          {isEdit
+            ? <button className="btn-danger" onClick={remove}>Eliminar</button>
+            : <button className="btn-outline" onClick={onClose}>Cancelar</button>}
+          <button className="btn-orange" onClick={save}>{isEdit ? 'Guardar cambios' : 'Guardar reserva'}</button>
         </div>
+        {isEdit && <button className="btn-outline" style={{width:'100%',marginTop:8}} onClick={onClose}>Cancelar</button>}
       </div>
     </div>
   )
@@ -554,6 +602,8 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, perfil, toast, 
 function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
   const [arriendo, setArriendo] = useState(tarifaArriendo)
   const [comunas, setComunas] = useState(tarifasComunas)
+  const [filtro, setFiltro] = useState('Todas')
+  const [nueva, setNueva] = useState({ comuna: '', p13: '', p20: '', p28: '' })
   useEffect(() => setArriendo(tarifaArriendo), [tarifaArriendo])
   useEffect(() => setComunas(tarifasComunas), [tarifasComunas])
 
@@ -567,6 +617,26 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
     if (r1.error || r2.error) { toast('No se pudieron guardar las tarifas'); return }
     toast('Tarifas guardadas'); reload()
   }
+
+  async function addComuna() {
+    if (!nueva.comuna.trim()) { toast('Escribe el nombre de la comuna'); return }
+    const { error } = await supabase.from('tarifas_comunas').insert({
+      comuna: nueva.comuna.trim(), p13: Number(nueva.p13)||0, p20: Number(nueva.p20)||0, p28: Number(nueva.p28)||0,
+    })
+    if (error) { toast('No se pudo agregar (¿ya existe esa comuna?)'); return }
+    setNueva({ comuna: '', p13: '', p20: '', p28: '' })
+    reload(); toast('Comuna agregada')
+  }
+
+  async function deleteComuna(c) {
+    if (!window.confirm(`¿Eliminar "${c.comuna}" de la lista de tarifas?`)) return
+    const { error } = await supabase.from('tarifas_comunas').delete().eq('id', c.id)
+    if (error) { toast('No se pudo eliminar'); return }
+    if (filtro === c.comuna) setFiltro('Todas')
+    reload(); toast('Comuna eliminada')
+  }
+
+  const visibles = filtro === 'Todas' ? comunas : comunas.filter(c => c.comuna === filtro)
 
   return (
     <>
@@ -591,25 +661,51 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
             ))}
           </tbody>
         </table>
+        {isAdmin && <div style={{marginTop:12}}><button className="btn-dark btn-sm" onClick={saveAll}>Guardar arriendo</button></div>}
       </div>
       <div className="card" style={{padding:0}}>
-        <div className="card-head" style={{padding:'18px 18px 0'}}><h2>Traslado por comuna</h2></div>
+        <div className="card-head" style={{padding:'18px 18px 0'}}>
+          <h2>Traslado por comuna</h2>
+          <div className="f-group" style={{minWidth:220,marginBottom:0}}>
+            <select value={filtro} onChange={e => setFiltro(e.target.value)}>
+              <option value="Todas">Ver todas las comunas ({comunas.length})</option>
+              {comunas.map(c => <option key={c.id} value={c.comuna}>{c.comuna}</option>)}
+            </select>
+          </div>
+        </div>
         <table className="data">
-          <thead><tr><th>Comuna</th><th>13 metros</th><th>20 metros</th><th>28 metros</th></tr></thead>
+          <thead><tr><th>Comuna</th><th>13 metros</th><th>20 metros</th><th>28 metros</th>{isAdmin && <th></th>}</tr></thead>
           <tbody>
-            {comunas.map((c, i) => (
-              <tr key={c.id}>
-                <td><strong>{c.comuna}</strong></td>
-                {['p13', 'p20', 'p28'].map(k => (
-                  <td key={k}>{isAdmin
-                    ? <input type="number" value={c[k]} onChange={e => { const cp = [...comunas]; cp[i] = {...cp[i], [k]: e.target.value}; setComunas(cp) }} />
-                    : <span className="mono">{fmtMoney(c[k])}</span>}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {!visibles.length && <tr><td colSpan={5} style={{textAlign:'center',color:'var(--mute2)',padding:20}}>No hay comunas que coincidan.</td></tr>}
+            {visibles.map((c) => {
+              const i = comunas.findIndex(x => x.id === c.id)
+              return (
+                <tr key={c.id}>
+                  <td><strong>{c.comuna}</strong></td>
+                  {['p13', 'p20', 'p28'].map(k => (
+                    <td key={k}>{isAdmin
+                      ? <input type="number" value={comunas[i][k]} onChange={e => { const cp = [...comunas]; cp[i] = {...cp[i], [k]: e.target.value}; setComunas(cp) }} />
+                      : <span className="mono">{fmtMoney(c[k])}</span>}
+                    </td>
+                  ))}
+                  {isAdmin && <td><button className="btn-danger btn-sm" onClick={() => deleteComuna(c)}>Eliminar</button></td>}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
+        {isAdmin && (
+          <div style={{padding:16,borderTop:'1px solid var(--border)'}}>
+            <div className="section-sub" style={{margin:'0 0 10px'}}>Agregar una comuna nueva a la lista</div>
+            <div className="quick-row" style={{gridTemplateColumns:'1.3fr 1fr 1fr 1fr auto'}}>
+              <div className="f-group"><label>Comuna</label><input type="text" value={nueva.comuna} onChange={e => setNueva({...nueva, comuna: e.target.value})} placeholder="Nombre de la comuna" /></div>
+              <div className="f-group"><label>13 m</label><input type="number" value={nueva.p13} onChange={e => setNueva({...nueva, p13: e.target.value})} /></div>
+              <div className="f-group"><label>20 m</label><input type="number" value={nueva.p20} onChange={e => setNueva({...nueva, p20: e.target.value})} /></div>
+              <div className="f-group"><label>28 m</label><input type="number" value={nueva.p28} onChange={e => setNueva({...nueva, p28: e.target.value})} /></div>
+              <button className="btn-dark" onClick={addComuna}>Agregar</button>
+            </div>
+          </div>
+        )}
       </div>
     </>
   )
