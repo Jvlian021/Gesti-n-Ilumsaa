@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from './supabaseClient'
 import Login from './Login.jsx'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import {
   isoDate, startOfWorkWeek, addDays, fmtMoney, fmtInputMoney, parseMoneyInput, DIAS, MESES,
   badgeClassFor, camionEstadoEnFecha, findAvailableTruck, priceFor,
@@ -122,11 +124,7 @@ export default function App() {
           />
         )}
         {view === 'cotizaciones' && (
-          <Cotizaciones
-            camiones={camiones} reservas={reservas} cotizaciones={cotizaciones}
-            tarifaArriendo={tarifaArriendo} tarifasComunas={tarifasComunas}
-            perfil={perfil} toast={toast} reload={loadAll}
-          />
+          <Cotizaciones cotizaciones={cotizaciones} perfil={perfil} toast={toast} reload={loadAll} />
         )}
       </main>
       <ReservaModal
@@ -838,107 +836,275 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
 }
 
 // ============================================================
-function Cotizaciones({ camiones, reservas, cotizaciones, tarifaArriendo, tarifasComunas, perfil, toast, reload }) {
-  const today = isoDate(new Date())
-  const [cliente, setCliente] = useState('')
-  const [size, setSize] = useState('13')
-  const [date, setDate] = useState(today)
-  const [comuna, setComuna] = useState(tarifasComunas[0]?.comuna || '')
-  const [result, setResult] = useState(null)
-  useEffect(() => { if (!comuna && tarifasComunas[0]) setComuna(tarifasComunas[0].comuna) }, [tarifasComunas]) // eslint-disable-line
+// Datos fijos del cotizador (misma información en cada cotización)
+const DATOS_EMPRESA = {
+  razon: 'Saavedra y Compañía Ltda.',
+  rubro: 'Ingeniería Eléctrica y Obras Civiles',
+  rut: '76.120.630-3',
+  direccion: 'Argentina 821, La Cisterna',
+  telefono: '+56 961234404',
+  web: 'www.ilumsa.cl',
+  correo: 'nsaavedra@ilumsa.cl',
+}
+const DATOS_BANCARIOS = [
+  'Saavedra y compañía limitada',
+  '76.120.630-3',
+  'Banco BCI',
+  'Cuenta Corriente 293 77 293',
+  'contacto@ilumsa.cl',
+]
+const CONDICIONES_DEFAULT = [
+  'Para confirmar la reserva, se deberá emitir una Orden de Compra (OC) y realizar el pago del 50% del valor total cotizado. El saldo pendiente deberá ser cancelado al término de cada jornada de trabajo.',
+  'En caso de extender el servicio del horario establecido, se adicionará el valor de forma proporcional.',
+].join('\n')
+const EQUIPO_TEXT = [
+  'El servicio incluye conductor con licencia profesional vigente y certificación como operador de grúa.',
+  'El equipo cuenta con Certificado de Hidroelevador vigente.',
+  'El camión dispone de seguro vehicular externo vigente.',
+  'El camión hidroelevador se encuentra equipado con conos de seguridad, botiquín de primeros auxilios y extintores vigentes, conforme a la normativa vigente.',
+]
+const RESPONSABILIDADES_TEXT = [
+  'Todo daño causado durante la ejecución del servicio será de exclusiva responsabilidad del arrendatario.',
+  'Las multas derivadas de la falta de permisos, autorizaciones o documentación requerida serán responsabilidad de la empresa arrendataria.',
+]
+const CANCELACIONES_TEXT = [
+  'En caso de cancelación del arriendo sin aviso previo, se deberá cancelar como mínimo el costo asociado al traslado del equipo.',
+]
 
-  function build() {
-    const truck = findAvailableTruck(camiones, reservas, size, date)
-    const price = priceFor(tarifaArriendo, tarifasComunas, size, comuna)
-    setResult({ truck, price })
-  }
+function nuevoItem() { return { descripcion: '', unidad: 'Hora', cantidad: 1, valorUnit: 0 } }
 
-  async function save() {
-    if (!result) return
-    const { error } = await supabase.from('cotizaciones').insert({
-      cliente: cliente || 'Sin nombre', tamano: Number(size), fecha: date, comuna,
-      camion_id: result.truck ? result.truck.id : null, total: result.price.total,
-      estado: 'Pendiente', creado_por: perfil.id,
+async function getLogoDataUrl() {
+  try {
+    const res = await fetch('/logo.png')
+    const blob = await res.blob()
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
     })
+  } catch (e) { return null }
+}
+
+async function generarPdfCotizacion(q) {
+  const logoData = await getLogoDataUrl()
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' })
+  const pageW = doc.internal.pageSize.getWidth()
+  let y = 40
+
+  if (logoData) { try { doc.addImage(logoData, 'PNG', 40, y, 46, 46) } catch (e) { /* logo opcional */ } }
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(180, 30, 30)
+  doc.text(DATOS_EMPRESA.razon, 95, y + 14)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(60, 60, 60)
+  doc.text(DATOS_EMPRESA.rubro, 95, y + 28)
+  doc.text(`Rut: ${DATOS_EMPRESA.rut} / ${DATOS_EMPRESA.direccion}`, 95, y + 40)
+  doc.text(`Teléfono: ${DATOS_EMPRESA.telefono}   Web: ${DATOS_EMPRESA.web}   Correo: ${DATOS_EMPRESA.correo}`, 95, y + 52)
+
+  y += 78
+  doc.setDrawColor(210); doc.line(40, y, pageW - 40, y); y += 22
+
+  doc.setTextColor(0, 0, 0)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
+  doc.text('Cliente:', 40, y)
+  doc.setFont('helvetica', 'normal')
+  doc.text(q.cliente || '—', 90, y)
+  doc.setFont('helvetica', 'bold')
+  doc.text(`N°. ${String(q.numero).padStart(6, '0')}`, pageW - 170, y)
+  y += 14
+  doc.setFont('helvetica', 'normal')
+  if (q.cliente_rut) doc.text(q.cliente_rut, 90, y)
+  doc.text(new Date(q.fecha + 'T00:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase(), pageW - 170, y)
+  y += 14
+  if (q.cliente_direccion) { doc.text(q.cliente_direccion, 90, y); y += 14 }
+  if (q.cliente_correo) { doc.text(q.cliente_correo, 90, y); y += 14 }
+
+  y += 8
+  autoTable(doc, {
+    startY: y,
+    head: [['ÍTEM', 'DESCRIPCIÓN', 'UNIDAD', 'CANTIDAD', 'VALOR UN', 'VALOR TOTAL']],
+    body: q.items.map((it, i) => [
+      String(i + 1), it.descripcion, it.unidad, String(it.cantidad),
+      fmtMoney(it.valorUnit), fmtMoney((Number(it.cantidad) || 0) * (Number(it.valorUnit) || 0)),
+    ]),
+    styles: { fontSize: 9, cellPadding: 6, valign: 'middle' },
+    headStyles: { fillColor: [20, 20, 20], textColor: 255 },
+    columnStyles: { 0: { cellWidth: 30 }, 2: { cellWidth: 50 }, 3: { cellWidth: 55 }, 4: { cellWidth: 70 }, 5: { cellWidth: 75 } },
+    margin: { left: 40, right: 40 },
+  })
+
+  const totalsX = pageW - 210
+  const filas = [['SUBTOTAL NETO', fmtMoney(q.subtotal)]]
+  if (q.descuento_pct > 0) filas.push([`DESCUENTO (${q.descuento_pct}%)`, '- ' + fmtMoney(q.subtotal - q.neto)])
+  filas.push(['TOTAL NETO', fmtMoney(q.neto)], ['IVA (19%)', fmtMoney(q.iva)], ['TOTAL', fmtMoney(q.total)])
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 20,
+    body: filas, theme: 'grid',
+    styles: { fontSize: 9, cellPadding: 5 },
+    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 100 }, 1: { halign: 'right', cellWidth: 100 } },
+    margin: { left: totalsX },
+  })
+
+  let by = doc.lastAutoTable.finalY + 14
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
+  doc.text('Datos Bancarios:', 40, by)
+  doc.setFont('helvetica', 'normal')
+  DATOS_BANCARIOS.forEach((line, i) => doc.text(line, 40, by + 12 + i * 11))
+
+  let cy = by + 12 + DATOS_BANCARIOS.length * 11 + 24
+  function bloque(titulo, lineas) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text(titulo, 40, cy); cy += 12
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5)
+    lineas.forEach(l => {
+      const wrapped = doc.splitTextToSize('- ' + l, pageW - 80)
+      doc.text(wrapped, 40, cy); cy += wrapped.length * 10 + 3
+    })
+    cy += 6
+  }
+  bloque('Condiciones Comerciales:', String(q.condiciones || '').split('\n').filter(Boolean))
+  bloque('Equipo y Operador:', EQUIPO_TEXT)
+  bloque('Responsabilidades:', RESPONSABILIDADES_TEXT)
+  bloque('Cancelaciones:', CANCELACIONES_TEXT)
+
+  doc.save(`Cotizacion_${String(q.numero).padStart(6, '0')}_${(q.cliente || 'cliente').replace(/\s+/g, '_')}.pdf`)
+}
+
+function Cotizaciones({ cotizaciones, perfil, toast, reload }) {
+  const today = isoDate(new Date())
+  const nextNumero = cotizaciones.reduce((max, c) => Math.max(max, c.numero || 0), 0) + 1
+
+  const [cliente, setCliente] = useState('')
+  const [clienteRut, setClienteRut] = useState('')
+  const [clienteDireccion, setClienteDireccion] = useState('')
+  const [clienteCorreo, setClienteCorreo] = useState('')
+  const [fecha, setFecha] = useState(today)
+  const [items, setItems] = useState([nuevoItem()])
+  const [aplicaDescuento, setAplicaDescuento] = useState(false)
+  const [descuentoPct, setDescuentoPct] = useState('')
+  const [condiciones, setCondiciones] = useState(CONDICIONES_DEFAULT)
+  const [guardando, setGuardando] = useState(false)
+
+  function updateItem(i, field, value) {
+    setItems(rows => rows.map((r, idx) => idx === i ? { ...r, [field]: value } : r))
+  }
+  function addItem() { setItems(rows => [...rows, nuevoItem()]) }
+  function removeItem(i) { setItems(rows => rows.length > 1 ? rows.filter((_, idx) => idx !== i) : rows) }
+
+  const subtotal = items.reduce((s, it) => s + (Number(it.cantidad) || 0) * (Number(it.valorUnit) || 0), 0)
+  const descuento = aplicaDescuento ? subtotal * (Number(descuentoPct) || 0) / 100 : 0
+  const neto = subtotal - descuento
+  const iva = neto * 0.19
+  const total = neto + iva
+
+  function resetForm() {
+    setCliente(''); setClienteRut(''); setClienteDireccion(''); setClienteCorreo('')
+    setFecha(today); setItems([nuevoItem()])
+    setAplicaDescuento(false); setDescuentoPct(''); setCondiciones(CONDICIONES_DEFAULT)
+  }
+
+  async function guardarYDescargar() {
+    if (!cliente.trim()) { toast('Escribe el nombre del cliente'); return }
+    if (!items.length || items.some(it => !it.descripcion.trim())) { toast('Completa la descripción de cada ítem'); return }
+    setGuardando(true)
+    const payload = {
+      numero: nextNumero, cliente: cliente.trim(), cliente_rut: clienteRut || null,
+      cliente_direccion: clienteDireccion || null, cliente_correo: clienteCorreo || null,
+      fecha, items, descuento_pct: aplicaDescuento ? Number(descuentoPct) || 0 : 0,
+      subtotal, neto, iva, total, condiciones, estado: 'Pendiente', creado_por: perfil.id,
+    }
+    const { error } = await supabase.from('cotizaciones').insert(payload)
+    setGuardando(false)
     if (error) { toast('No se pudo guardar la cotización'); return }
-    setCliente(''); setResult(null); reload(); toast('Cotización guardada')
+    await generarPdfCotizacion(payload)
+    resetForm(); reload(); toast('Cotización guardada y PDF generado')
   }
 
-  async function confirmQuote(q) {
-    if (!q.camion_id) { toast('Asigna un camión disponible antes de confirmar'); return }
-    const [r1, r2] = await Promise.all([
-      supabase.from('cotizaciones').update({ estado: 'Confirmada' }).eq('id', q.id),
-      supabase.from('reservas').insert({
-        camion_id: q.camion_id, cliente: q.cliente, fecha: q.fecha, comuna: q.comuna,
-        direccion: 'Por confirmar', estado: 'Reservado', valor: q.total, creado_por: perfil.id,
-      }),
-    ])
-    if (r1.error || r2.error) { toast('No se pudo confirmar'); return }
-    reload(); toast('Reserva creada desde la cotización')
+  async function marcarConfirmada(q) {
+    const { error } = await supabase.from('cotizaciones').update({ estado: 'Confirmada' }).eq('id', q.id)
+    if (error) { toast('No se pudo actualizar'); return }
+    reload(); toast('Cotización marcada como confirmada')
   }
 
-  const sorted = [...cotizaciones].sort((a, b) => (b.creado_en || '').localeCompare(a.creado_en || ''))
+  const sorted = [...cotizaciones].sort((a, b) => (b.numero || 0) - (a.numero || 0))
 
   return (
     <>
-      <div className="toolbar"><div><h1>Cotizaciones</h1><div className="section-sub">Arma una cotización y guárdala para hacer seguimiento</div></div></div>
+      <div className="toolbar"><div><h1>Cotizaciones</h1><div className="section-sub">Arma una cotización detallada y descarga el PDF para enviar al cliente</div></div></div>
       <div className="card">
-        <div className="card-head"><h2>Nueva cotización</h2></div>
-        <div className="quick-row" style={{gridTemplateColumns:'1fr 1fr 1fr 1fr'}}>
+        <div className="card-head"><h2>Nueva cotización · N° {String(nextNumero).padStart(6, '0')}</h2></div>
+        <div className="quick-row" style={{gridTemplateColumns:'1.3fr 1fr 1fr 1fr'}}>
           <div className="f-group"><label>Cliente</label><input type="text" value={cliente} onChange={e => setCliente(e.target.value)} placeholder="Nombre cliente / empresa" /></div>
-          <div className="f-group"><label>Tamaño de camión</label>
-            <select value={size} onChange={e => setSize(e.target.value)}>
-              <option value="13">13 metros</option><option value="20">20 metros</option><option value="28">28 metros</option>
-            </select>
-          </div>
-          <div className="f-group"><label>Fecha</label><input type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
-          <div className="f-group"><label>Comuna / destino</label>
-            <select value={comuna} onChange={e => setComuna(e.target.value)}>
-              {tarifasComunas.map(c => <option key={c.id} value={c.comuna}>{c.comuna}</option>)}
-            </select>
-          </div>
+          <div className="f-group"><label>RUT</label><input type="text" value={clienteRut} onChange={e => setClienteRut(e.target.value)} placeholder="77.976.841-4" /></div>
+          <div className="f-group"><label>Dirección</label><input type="text" value={clienteDireccion} onChange={e => setClienteDireccion(e.target.value)} placeholder="Calle, número, comuna" /></div>
+          <div className="f-group"><label>Correo</label><input type="text" value={clienteCorreo} onChange={e => setClienteCorreo(e.target.value)} placeholder="correo@cliente.cl" /></div>
         </div>
-        <div style={{marginTop:12}}><button className="btn-dark" onClick={build}>Calcular cotización</button></div>
-        {result && !result.truck && (
-          <div className="result-box none">
-            <div className="result-title no"><span className="ok-ic">×</span>No hay camión de {size}m libre ese día</div>
-            <div style={{fontSize:12.5,color:'var(--mute)'}}>Puedes guardar igual la cotización y confirmar el camión más adelante.</div>
-            <div style={{marginTop:12}}><button className="btn-outline btn-sm" onClick={save}>Guardar cotización de todas formas</button></div>
+        <div className="f-group" style={{maxWidth:200}}><label>Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} /></div>
+
+        <div className="section-sub" style={{margin:'16px 0 8px'}}>Ítems</div>
+        <table className="data">
+          <thead><tr><th>Descripción</th><th>Unidad</th><th>Cantidad</th><th>Valor unitario</th><th>Valor total</th><th></th></tr></thead>
+          <tbody>
+            {items.map((it, i) => (
+              <tr key={i}>
+                <td><input type="text" value={it.descripcion} onChange={e => updateItem(i, 'descripcion', e.target.value)} placeholder="Arriendo de camión alza hombre de..." style={{width:'100%'}} /></td>
+                <td>
+                  <select value={it.unidad} onChange={e => updateItem(i, 'unidad', e.target.value)}>
+                    <option value="Hora">Hora</option><option value="Día">Día</option><option value="Semana">Semana</option>
+                  </select>
+                </td>
+                <td><input type="text" inputMode="numeric" value={it.cantidad} onChange={e => updateItem(i, 'cantidad', e.target.value.replace(/[^\d]/g, ''))} style={{width:70}} /></td>
+                <td><input type="text" inputMode="numeric" value={fmtInputMoney(it.valorUnit)} onChange={e => updateItem(i, 'valorUnit', parseMoneyInput(e.target.value))} style={{width:110}} /></td>
+                <td className="mono">{fmtMoney((Number(it.cantidad) || 0) * (Number(it.valorUnit) || 0))}</td>
+                <td>{items.length > 1 && <button className="btn-danger btn-sm" onClick={() => removeItem(i)}>×</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button className="btn-outline btn-sm" style={{marginTop:8}} onClick={addItem}>+ Agregar ítem</button>
+
+        <div style={{marginTop:16, display:'flex', alignItems:'center', gap:10}}>
+          <label style={{display:'flex', alignItems:'center', gap:6, fontSize:13.5}}>
+            <input type="checkbox" checked={aplicaDescuento} onChange={e => setAplicaDescuento(e.target.checked)} /> Aplicar descuento
+          </label>
+          {aplicaDescuento && (
+            <input type="text" inputMode="numeric" value={descuentoPct} onChange={e => setDescuentoPct(e.target.value.replace(/[^\d]/g, ''))} style={{width:70}} placeholder="%" />
+          )}
+        </div>
+
+        <div className="f-group" style={{marginTop:16}}><label>Condiciones comerciales</label>
+          <textarea value={condiciones} onChange={e => setCondiciones(e.target.value)} rows={4} style={{width:'100%',padding:'9px 10px',border:'1px solid var(--border)',borderRadius:7,fontSize:'13.5px',fontFamily:'inherit',resize:'vertical'}} />
+        </div>
+
+        <div className="result-box" style={{marginTop:16}}>
+          <div className="result-grid">
+            <div className="rl">Subtotal neto</div><div className="rv">{fmtMoney(subtotal)}</div>
+            {aplicaDescuento && <><div className="rl">Descuento ({descuentoPct || 0}%)</div><div className="rv">- {fmtMoney(descuento)}</div></>}
+            <div className="rl">Total neto</div><div className="rv">{fmtMoney(neto)}</div>
+            <div className="rl">IVA (19%)</div><div className="rv">{fmtMoney(iva)}</div>
           </div>
-        )}
-        {result && result.truck && (
-          <div className="result-box">
-            <div className="result-title"><span className="ok-ic">✓</span>{result.truck.nombre} · {size}m</div>
-            <div className="result-grid">
-              <div className="rl">Cliente</div><div className="rv">{cliente || '—'}</div>
-              <div className="rl">Arriendo (por hora)</div><div className="rv">{fmtMoney(result.price.arriendo)}</div>
-              <div className="rl">Traslado a {comuna}</div><div className="rv">{fmtMoney(result.price.traslado)}</div>
-            </div>
-            <div className="result-total"><span className="rt-lbl">Total + IVA</span><span className="rt-val">{fmtMoney(result.price.total)}</span></div>
-            <div style={{marginTop:12}}><button className="btn-orange btn-sm" onClick={save}>Guardar cotización</button></div>
-          </div>
-        )}
+          <div className="result-total"><span className="rt-lbl">Total</span><span className="rt-val">{fmtMoney(total)}</span></div>
+          <div style={{marginTop:12}}><button className="btn-orange btn-sm" disabled={guardando} onClick={guardarYDescargar}>{guardando ? 'Guardando…' : 'Guardar y descargar PDF'}</button></div>
+        </div>
       </div>
+
       <div className="card" style={{padding:0}}>
         <div className="card-head" style={{padding:'18px 18px 0'}}><h2>Cotizaciones guardadas</h2></div>
         <table className="data">
-          <thead><tr><th>Cliente</th><th>Camión</th><th>Fecha</th><th>Comuna</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>N°</th><th>Cliente</th><th>Fecha</th><th>Total</th><th>Estado</th><th></th></tr></thead>
           <tbody>
-            {!sorted.length && <tr><td colSpan={7} style={{textAlign:'center',color:'var(--mute2)',padding:24}}>Aún no hay cotizaciones guardadas.</td></tr>}
-            {sorted.map(q => {
-              const cam = camiones.find(c => c.id === q.camion_id)
-              return (
-                <tr key={q.id}>
-                  <td><strong>{q.cliente}</strong></td>
-                  <td>{q.tamano}m {cam ? '· ' + cam.nombre : ''}</td>
-                  <td className="mono">{new Date(q.fecha + 'T00:00:00').toLocaleDateString('es-CL')}</td>
-                  <td>{q.comuna}</td>
-                  <td className="mono"><strong>{fmtMoney(q.total)}</strong></td>
-                  <td><span className={`tag ${q.estado === 'Confirmada' ? 'st-trabajo' : 'st-pendiente'}`}>{q.estado}</span></td>
-                  <td>{q.estado === 'Pendiente' && <button className="btn-dark btn-sm" onClick={() => confirmQuote(q)}>Confirmar y reservar</button>}</td>
-                </tr>
-              )
-            })}
+            {!sorted.length && <tr><td colSpan={6} style={{textAlign:'center',color:'var(--mute2)',padding:24}}>Aún no hay cotizaciones guardadas.</td></tr>}
+            {sorted.map(q => (
+              <tr key={q.id}>
+                <td className="mono">{String(q.numero || 0).padStart(6, '0')}</td>
+                <td><strong>{q.cliente}</strong></td>
+                <td className="mono">{new Date(q.fecha + 'T00:00:00').toLocaleDateString('es-CL')}</td>
+                <td className="mono"><strong>{fmtMoney(q.total)}</strong></td>
+                <td><span className={`tag ${q.estado === 'Confirmada' ? 'st-trabajo' : 'st-pendiente'}`}>{q.estado}</span></td>
+                <td style={{display:'flex',gap:6}}>
+                  <button className="btn-outline btn-sm" onClick={() => generarPdfCotizacion(q)}>Descargar PDF</button>
+                  {q.estado === 'Pendiente' && <button className="btn-dark btn-sm" onClick={() => marcarConfirmada(q)}>Marcar confirmada</button>}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
