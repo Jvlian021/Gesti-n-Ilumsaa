@@ -926,7 +926,7 @@ function formatRut(value) {
 
 // Nombre de archivo por defecto, igual al formato que ya usan: PPTO<numero>_<CLIENTE EN MAYÚSCULAS>
 function nombreArchivoDefault(numero, cliente) {
-  const cli = String(cliente || '').trim().toUpperCase().replace(/[^A-ZÁÉÍÓÚÑ0-9]+/g, '')
+  const cli = String(cliente || '').trim().toUpperCase().replace(/[^A-ZÁÉÍÓÚÑ0-9 ]+/g, '').replace(/ +/g, ' ')
   return `PPTO${String(numero || '').padStart(4, '0')}${cli ? '_' + cli : ''}`
 }
 
