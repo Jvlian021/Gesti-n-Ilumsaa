@@ -300,9 +300,10 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
               </div>
               <div className="f-group"><label>Fecha</label><input type="date" value={qDate} onChange={e => setQDate(e.target.value)} /></div>
               <div className="f-group"><label>Comuna / destino</label>
-                <select value={qComuna} onChange={e => setQComuna(e.target.value)}>
-                  {tarifasComunas.map(c => <option key={c.id} value={c.comuna}>{c.comuna}</option>)}
-                </select>
+                <input type="text" list="dl-comunas-dash" value={qComuna} onChange={e => setQComuna(e.target.value)} placeholder="Escribe para buscar…" autoComplete="off" />
+                <datalist id="dl-comunas-dash">
+                  {tarifasComunas.map(c => <option key={c.id} value={c.comuna} />)}
+                </datalist>
               </div>
               <button className="btn-dark" onClick={runSearch}>Buscar disponibilidad</button>
             </div>
@@ -724,9 +725,10 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
           <div className="f-group"><label>Cliente</label><input type="text" value={form.cliente} onChange={e => setForm({...form, cliente: e.target.value})} placeholder="Nombre cliente / empresa" /></div>
           <div className="f-group"><label>Hora</label><input type="time" value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} /></div>
           <div className="f-group"><label>Comuna</label>
-            <select value={form.comuna} onChange={e => setForm({...form, comuna: e.target.value})}>
-              {tarifasComunas.map(c => <option key={c.id} value={c.comuna}>{c.comuna}</option>)}
-            </select>
+            <input type="text" list="dl-comunas-reserva" value={form.comuna} onChange={e => setForm({...form, comuna: e.target.value})} placeholder="Escribe para buscar…" autoComplete="off" />
+            <datalist id="dl-comunas-reserva">
+              {tarifasComunas.map(c => <option key={c.id} value={c.comuna} />)}
+            </datalist>
           </div>
           <div className="f-group"><label>Dirección</label><input type="text" value={form.direccion} onChange={e => setForm({...form, direccion: e.target.value})} placeholder="Calle, número" /></div>
           <div className="f-group"><label>Conductor</label>
@@ -755,7 +757,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
 function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
   const [arriendo, setArriendo] = useState(tarifaArriendo)
   const [comunas, setComunas] = useState(tarifasComunas)
-  const [filtro, setFiltro] = useState('Todas')
+  const [filtro, setFiltro] = useState('')
   const [nueva, setNueva] = useState({ comuna: '', p13: '', p20: '', p28: '' })
   useEffect(() => setArriendo(tarifaArriendo), [tarifaArriendo])
   useEffect(() => setComunas(tarifasComunas), [tarifasComunas])
@@ -785,11 +787,13 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
     if (!window.confirm(`¿Eliminar "${c.comuna}" de la lista de tarifas?`)) return
     const { error } = await supabase.from('tarifas_comunas').delete().eq('id', c.id)
     if (error) { toast('No se pudo eliminar'); return }
-    if (filtro === c.comuna) setFiltro('Todas')
+    setFiltro('')
     reload(); toast('Comuna eliminada')
   }
 
-  const visibles = filtro === 'Todas' ? comunas : comunas.filter(c => c.comuna === filtro)
+  const visibles = filtro.trim()
+    ? comunas.filter(c => c.comuna.toLowerCase().includes(filtro.trim().toLowerCase()))
+    : comunas
 
   return (
     <>
@@ -820,10 +824,10 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
         <div className="card-head" style={{padding:'18px 18px 0'}}>
           <h2>Traslado por comuna</h2>
           <div className="f-group" style={{minWidth:220,marginBottom:0}}>
-            <select value={filtro} onChange={e => setFiltro(e.target.value)}>
-              <option value="Todas">Ver todas las comunas ({comunas.length})</option>
-              {comunas.map(c => <option key={c.id} value={c.comuna}>{c.comuna}</option>)}
-            </select>
+            <div style={{display:'flex',gap:6}}>
+              <input type="text" value={filtro} onChange={e => setFiltro(e.target.value)} placeholder={`Buscar comuna… (${comunas.length})`} />
+              {filtro && <button className="btn-outline btn-sm" onClick={() => setFiltro('')}>×</button>}
+            </div>
           </div>
         </div>
         <table className="data">
@@ -1297,9 +1301,10 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
               </select>
             </div>
             <div className="f-group"><label>Traslado · comuna de destino</label>
-              <select value={trasladoComuna} onChange={e => setTrasladoComuna(e.target.value)}>
-                {tarifasComunas.map(c => <option key={c.id} value={c.comuna}>{c.comuna}</option>)}
-              </select>
+              <input type="text" list="dl-comunas-cotizacion" value={trasladoComuna} onChange={e => setTrasladoComuna(e.target.value)} placeholder="Escribe para buscar…" autoComplete="off" />
+              <datalist id="dl-comunas-cotizacion">
+                {tarifasComunas.map(c => <option key={c.id} value={c.comuna} />)}
+              </datalist>
             </div>
           </div>
         )}
