@@ -223,7 +223,6 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
         <div className="stat-card amber"><div className="lbl">Camiones ocupados hoy</div><div className="val">{ocup}</div><div className="of">de {total}</div></div>
         <div className="stat-card red"><div className="lbl">En mantención</div><div className="val">{mant}</div><div className="of">de {total}</div></div>
         <div className="stat-card blue"><div className="lbl">Servicios mañana</div><div className="val">{manana}</div><div className="of">reservas</div></div>
-        <div className="stat-card purple"><div className="lbl">Cotizaciones pendientes</div><div className="val">{cotPend}</div><div className="of">por enviar</div></div>
       </div>
 
       <div className="grid-2col">
@@ -1209,7 +1208,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
           <tbody>
             {items.map((it, i) => (
               <tr key={i}>
-                <td className="desc-cell"><textarea className="desc-input" value={it.descripcion} onChange={e => updateItem(i, 'descripcion', e.target.value)} placeholder="Arriendo de camión alza hombre de..." rows={2} /></td>
+                <td className="desc-cell"><textarea className="desc-input" value={it.descripcion} onChange={e => updateItem(i, 'descripcion', e.target.value)} placeholder="Arriendo de camión alza hombre de..." rows={3} /></td>
                 <td>
                   <select value={it.unidad} onChange={e => updateItem(i, 'unidad', e.target.value)}>
                     <option value="Hora">Hora</option><option value="Día">Día</option><option value="Semana">Semana</option>
@@ -1223,7 +1222,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
             ))}
             {incluirTraslado && (
               <tr style={{background:'var(--bg2, #fafafa)'}}>
-                <td className="desc-cell"><textarea className="desc-input" value={trasladoDescripcion} onChange={e => onChangeTrasladoDescripcion(e.target.value)} rows={2} /></td>
+                <td className="desc-cell"><textarea className="desc-input" value={trasladoDescripcion} onChange={e => onChangeTrasladoDescripcion(e.target.value)} rows={3} /></td>
                 <td><span className="mono">un</span></td>
                 <td><input type="text" inputMode="numeric" value={trasladoCantidad} onChange={e => setTrasladoCantidad(e.target.value.replace(/[^\d]/g, ''))} style={{width:70}} /></td>
                 <td><input type="text" inputMode="numeric" value={fmtInputMoney(trasladoValor)} onChange={e => onChangeTrasladoValor(e.target.value)} style={{width:110}} /></td>
