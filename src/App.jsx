@@ -618,7 +618,7 @@ function Reservas({ camiones, reservas, conductores, tarifasComunas, perfil, toa
 // ============================================================
 function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, perfil, toast, reload, initialCamionId, initialFecha, editReserva }) {
   const today = isoDate(new Date())
-  const [form, setForm] = useState({ camionId: '', cliente: '', fecha: today, hora: '', comuna: '', direccion: '', estado: 'Reservado', conductorId: '', descripcion: '' })
+  const [form, setForm] = useState({ camionId: '', cliente: '', fecha: today, hasta: '', hora: '', comuna: '', direccion: '', estado: 'Reservado', conductorId: '', descripcion: '' })
   const isEdit = !!editReserva
 
   useEffect(() => {
@@ -628,6 +628,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
         camionId: editReserva.camion_id || camiones[0]?.id || '',
         cliente: editReserva.cliente || '',
         fecha: editReserva.fecha || today,
+        hasta: editReserva.fecha || today,
         hora: editReserva.hora ? editReserva.hora.slice(0,5) : '',
         comuna: editReserva.comuna || tarifasComunas[0]?.comuna || '',
         direccion: editReserva.direccion || '',
@@ -640,7 +641,8 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
         ...f,
         camionId: initialCamionId || camiones[0]?.id || '',
         fecha: initialFecha || today,
-        hora: '', cliente: '', direccion: '', conductorId: '', descripcion: '',
+        hasta: initialFecha || today,
+        hora: '', cliente: '', direccion: '', conductorId: '', descripcion: '', estado: 'Reservado',
         comuna: f.comuna || tarifasComunas[0]?.comuna || '',
       }))
     }
@@ -648,17 +650,41 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
 
   if (!show) return null
 
+  const esMantencion = form.estado === 'Mantención'
+
   async function save() {
-    if (!form.cliente || !form.fecha || !form.direccion) { toast('Completa cliente, fecha y dirección'); return }
-    const payload = {
-      camion_id: form.camionId, cliente: form.cliente, fecha: form.fecha, hora: form.hora || null,
+    if (!form.camionId || !form.fecha) { toast('Completa el camión y la fecha'); return }
+    const hastaFinal = form.hasta && form.hasta >= form.fecha ? form.hasta : form.fecha
+
+    if (esMantencion) {
+      if (isEdit) {
+        const { error: delErr } = await supabase.from('reservas').delete().eq('id', editReserva.id)
+        if (delErr) { toast('No se pudo actualizar la reserva'); return }
+      }
+      const { error } = await supabase.from('camiones').update({ estado_general: 'Mantención', hasta: hastaFinal }).eq('id', form.camionId)
+      if (error) { toast('No se pudo poner el camión en mantención'); return }
+      reload(); toast('Camión puesto en mantención'); onClose()
+      return
+    }
+
+    if (!form.cliente || !form.direccion) { toast('Completa cliente y dirección'); return }
+    const dias = []
+    for (let d = new Date(form.fecha + 'T00:00:00'), end = new Date(hastaFinal + 'T00:00:00'); d <= end; d.setDate(d.getDate() + 1)) {
+      dias.push(isoDate(d))
+    }
+    const base = {
+      camion_id: form.camionId, cliente: form.cliente, hora: form.hora || null,
       comuna: form.comuna, direccion: form.direccion, estado: form.estado,
       conductor_id: form.conductorId || null, descripcion: form.descripcion || null,
     }
-    const { error } = isEdit
-      ? await supabase.from('reservas').update(payload).eq('id', editReserva.id)
-      : await supabase.from('reservas').insert({ ...payload, valor: 0, creado_por: perfil.id })
-    if (error) { toast('No se pudo guardar la reserva'); return }
+    if (isEdit && dias.length === 1) {
+      const { error } = await supabase.from('reservas').update({ ...base, fecha: dias[0] }).eq('id', editReserva.id)
+      if (error) { toast('No se pudo guardar la reserva'); return }
+    } else {
+      if (isEdit) await supabase.from('reservas').delete().eq('id', editReserva.id)
+      const { error } = await supabase.from('reservas').insert(dias.map(fecha => ({ ...base, fecha, valor: 0, creado_por: perfil.id })))
+      if (error) { toast('No se pudo guardar la reserva'); return }
+    }
     reload(); toast(isEdit ? 'Reserva actualizada' : 'Reserva guardada'); onClose()
   }
 
@@ -677,38 +703,42 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
       <div className="modal">
         <h3>{isEdit ? 'Editar reserva' : 'Nueva reserva'}</h3>
         <div className="msub">{camionSel ? `${camionSel.nombre} · ${new Date(form.fecha + 'T00:00:00').toLocaleDateString('es-CL')}` : 'Elige un camión disponible en la fecha indicada.'}</div>
-        <div className="f-group"><label>Camión</label>
-          <select value={form.camionId} onChange={e => setForm({...form, camionId: e.target.value})}>
-            {camiones.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.tamano}m)</option>)}
-          </select>
-        </div>
-        <div className="f-group"><label>Cliente</label><input type="text" value={form.cliente} onChange={e => setForm({...form, cliente: e.target.value})} placeholder="Nombre cliente / empresa" /></div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-          <div className="f-group"><label>Fecha</label><input type="date" value={form.fecha} onChange={e => setForm({...form, fecha: e.target.value})} /></div>
+          <div className="f-group"><label>Camión</label>
+            <select value={form.camionId} onChange={e => setForm({...form, camionId: e.target.value})}>
+              {camiones.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.tamano}m)</option>)}
+            </select>
+          </div>
+          <div className="f-group"><label>Estado</label>
+            <select value={form.estado} onChange={e => setForm({...form, estado: e.target.value})}>
+              <option value="Reservado">Reservado</option><option value="En Trabajo">En Trabajo</option><option value="Mantención">Mantención</option>
+            </select>
+          </div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div className="f-group"><label>{esMantencion ? 'Desde' : 'Fecha'}</label><input type="date" value={form.fecha} onChange={e => setForm({...form, fecha: e.target.value})} /></div>
+          <div className="f-group"><label>Hasta {esMantencion ? '' : '(opcional)'}</label><input type="date" value={form.hasta} min={form.fecha} onChange={e => setForm({...form, hasta: e.target.value})} /></div>
+        </div>
+        {esMantencion && <div className="section-sub" style={{margin:'-6px 0 12px'}}>El camión quedará en mantención en el calendario desde la fecha "Desde" hasta la fecha "Hasta".</div>}
+        {!esMantencion && <>
+          <div className="f-group"><label>Cliente</label><input type="text" value={form.cliente} onChange={e => setForm({...form, cliente: e.target.value})} placeholder="Nombre cliente / empresa" /></div>
           <div className="f-group"><label>Hora</label><input type="time" value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} /></div>
-        </div>
-        <div className="f-group"><label>Comuna</label>
-          <select value={form.comuna} onChange={e => setForm({...form, comuna: e.target.value})}>
-            {tarifasComunas.map(c => <option key={c.id} value={c.comuna}>{c.comuna}</option>)}
-          </select>
-        </div>
-        <div className="f-group"><label>Dirección</label><input type="text" value={form.direccion} onChange={e => setForm({...form, direccion: e.target.value})} placeholder="Calle, número" /></div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div className="f-group"><label>Comuna</label>
+            <select value={form.comuna} onChange={e => setForm({...form, comuna: e.target.value})}>
+              {tarifasComunas.map(c => <option key={c.id} value={c.comuna}>{c.comuna}</option>)}
+            </select>
+          </div>
+          <div className="f-group"><label>Dirección</label><input type="text" value={form.direccion} onChange={e => setForm({...form, direccion: e.target.value})} placeholder="Calle, número" /></div>
           <div className="f-group"><label>Conductor</label>
             <select value={form.conductorId} onChange={e => setForm({...form, conductorId: e.target.value})}>
               <option value="">Sin asignar</option>
               {conductores.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
           </div>
-          <div className="f-group"><label>Estado</label>
-            <select value={form.estado} onChange={e => setForm({...form, estado: e.target.value})}>
-              <option value="Reservado">Reservado</option><option value="En Trabajo">En Trabajo</option>
-            </select>
+          <div className="f-group"><label>Descripción</label>
+            <textarea value={form.descripcion} onChange={e => setForm({...form, descripcion: e.target.value})} placeholder="Detalles del trabajo, notas para el conductor, etc." rows={3} style={{width:'100%',padding:'9px 10px',border:'1px solid var(--border)',borderRadius:7,fontSize:'13.5px',fontFamily:'inherit',resize:'vertical'}} />
           </div>
-        </div>
-        <div className="f-group"><label>Descripción</label>
-          <textarea value={form.descripcion} onChange={e => setForm({...form, descripcion: e.target.value})} placeholder="Detalles del trabajo, notas para el conductor, etc." rows={3} style={{width:'100%',padding:'9px 10px',border:'1px solid var(--border)',borderRadius:7,fontSize:'13.5px',fontFamily:'inherit',resize:'vertical'}} />
-        </div>
+        </>}
         <div className="modal-actions">
           {isEdit
             ? <button className="btn-danger" onClick={remove}>Eliminar</button>
