@@ -919,13 +919,65 @@ async function getLogoInfo() {
   } catch (e) { return null }
 }
 
-// Nota: jsPDF no permite incrustar fuentes comerciales (Bodoni MT Black / Bookman Old Style / Cambria)
-// sin agregar los archivos de fuente al proyecto, así que se usa "times" (serif), la más parecida
-// entre las fuentes que trae jsPDF por defecto. Colores, tamaños, negritas, bordes y layout sí
-// quedan calcados del Excel de referencia.
+// Fuentes gratuitas (licencia OFL, de uso libre) parecidas a las originales del Excel —
+// no se pueden incrustar Bodoni MT Black / Bookman Old Style / Cambria porque son fuentes
+// comerciales de Microsoft. Se cargan en vivo desde el repo oficial de Google Fonts.
+const FONT_FILES = {
+  display: ['https://raw.githubusercontent.com/google/fonts/main/ofl/abrilfatface/AbrilFatface-Regular.ttf', 'AbrilFatface-Regular.ttf', 'display', 'normal'],
+  serifRegular: ['https://raw.githubusercontent.com/google/fonts/main/ofl/ptserif/PT_Serif-Web-Regular.ttf', 'PTSerif-Regular.ttf', 'serif', 'normal'],
+  serifBold: ['https://raw.githubusercontent.com/google/fonts/main/ofl/ptserif/PT_Serif-Web-Bold.ttf', 'PTSerif-Bold.ttf', 'serif', 'bold'],
+  slabRegular: ['https://raw.githubusercontent.com/google/fonts/main/ofl/zillaslab/ZillaSlab-Regular.ttf', 'ZillaSlab-Regular.ttf', 'slab', 'normal'],
+  slabBold: ['https://raw.githubusercontent.com/google/fonts/main/ofl/zillaslab/ZillaSlab-Bold.ttf', 'ZillaSlab-Bold.ttf', 'slab', 'bold'],
+}
+
+// Codifica a base64 a mano (byte a byte, sin fromCharCode.apply ni Blob) — evita problemas
+// de compatibilidad con archivos binarios grandes en algunos navegadores/extensiones.
+function uint8ToBase64(bytes) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  let result = ''
+  const len = bytes.length
+  for (let i = 0; i < len; i += 3) {
+    const b0 = bytes[i], b1 = bytes[i + 1], b2 = bytes[i + 2]
+    const triplet = (b0 << 16) | ((b1 || 0) << 8) | (b2 || 0)
+    result += chars[(triplet >> 18) & 0x3F]
+    result += chars[(triplet >> 12) & 0x3F]
+    result += i + 1 < len ? chars[(triplet >> 6) & 0x3F] : '='
+    result += i + 2 < len ? chars[triplet & 0x3F] : '='
+  }
+  return result
+}
+
+async function fetchFontBase64(url) {
+  const res = await fetch(url)
+  const buf = await res.arrayBuffer()
+  return uint8ToBase64(new Uint8Array(buf))
+}
+
+// Se guardan en memoria una vez descargadas, para no volver a pedirlas por internet en
+// cada cotización dentro de la misma sesión del navegador.
+let fontBase64Cache = null
+
+// Registra las 5 fuentes en el PDF. Si por algún motivo no hay internet o falla la carga,
+// se sigue usando "times" (la fuente de respaldo de jsPDF) para no romper la descarga.
+async function registerFonts(doc) {
+  try {
+    const entries = Object.values(FONT_FILES)
+    if (!fontBase64Cache) fontBase64Cache = await Promise.all(entries.map(([url]) => fetchFontBase64(url)))
+    entries.forEach(([, filename, family, style], i) => {
+      doc.addFileToVFS(filename, fontBase64Cache[i])
+      doc.addFont(filename, family, style)
+    })
+    return { title: 'display', serif: 'serif', slab: 'slab' }
+  } catch (e) {
+    fontBase64Cache = null
+    return { title: 'times', serif: 'times', slab: 'times' }
+  }
+}
+
 async function generarPdfCotizacion(q, nombreArchivo) {
   const logo = await getLogoInfo()
   const doc = new jsPDF({ unit: 'pt', format: 'letter' })
+  const F = await registerFonts(doc)
   const pageW = doc.internal.pageSize.getWidth()
   const marginL = 40, marginR = 40
   const contentW = pageW - marginL - marginR
@@ -944,29 +996,30 @@ async function generarPdfCotizacion(q, nombreArchivo) {
   // Centrado sobre todo el ancho de la hoja (igual que en la plantilla original), no solo
   // en el espacio a la derecha del logo — así el título queda alineado con la tabla de abajo.
   const headCenterX = (marginL + pageW - marginR) / 2
-  doc.setFont('times', 'bold'); doc.setFontSize(17); doc.setTextColor(...NAVY)
+  doc.setFont(F.title, 'normal'); doc.setFontSize(19); doc.setTextColor(...NAVY)
   doc.text(DATOS_EMPRESA.razon, headCenterX, y + 13, { align: 'center' })
-  doc.setFont('times', 'normal'); doc.setFontSize(9.5); doc.setTextColor(30, 30, 30)
-  doc.text(DATOS_EMPRESA.rubro, headCenterX, y + 29, { align: 'center' })
+  doc.setFont(F.slab, 'normal'); doc.setFontSize(9.5); doc.setTextColor(30, 30, 30)
+  doc.text(DATOS_EMPRESA.rubro, headCenterX, y + 30, { align: 'center' })
   doc.setFontSize(8.5); doc.setTextColor(...BLUE2)
-  doc.text(`Rut: ${DATOS_EMPRESA.rut} / ${DATOS_EMPRESA.direccion}`, headCenterX, y + 43, { align: 'center' })
-  doc.text(`Teléfono: ${DATOS_EMPRESA.telefono}    Web: ${DATOS_EMPRESA.web}    Correo: ${DATOS_EMPRESA.correo}`, headCenterX, y + 56, { align: 'center' })
+  doc.text(`Rut: ${DATOS_EMPRESA.rut} / ${DATOS_EMPRESA.direccion}`, headCenterX, y + 44, { align: 'center' })
+  doc.text(`Teléfono: ${DATOS_EMPRESA.telefono}    Web: ${DATOS_EMPRESA.web}    Correo: ${DATOS_EMPRESA.correo}`, headCenterX, y + 57, { align: 'center' })
 
-  y += 78
+  y += 79
   doc.setDrawColor(0); doc.setLineWidth(0.75); doc.line(marginL, y, pageW - marginR, y)
   y += 20
 
-  doc.setFont('times', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...NAVY)
+  doc.setFont(F.slab, 'bold'); doc.setFontSize(9.5); doc.setTextColor(...NAVY)
   doc.text('Cliente:', marginL, y)
+  doc.setFont(F.serif, 'bold')
   doc.text(q.cliente || '—', marginL + 48, y)
   doc.setTextColor(0, 0, 0)
   doc.text(`N°.    ${q.numero}`, pageW - marginR - 140, y)
   y += 15
-  doc.setFont('times', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(9)
+  doc.setFont(F.serif, 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(9)
   if (q.cliente_rut) doc.text(q.cliente_rut, marginL + 48, y)
-  doc.setFont('times', 'bold')
+  doc.setFont(F.serif, 'bold')
   doc.text(new Date(q.fecha + 'T00:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase(), pageW - marginR - 140, y)
-  doc.setFont('times', 'normal')
+  doc.setFont(F.serif, 'normal')
   y += 15
   if (q.cliente_direccion) { doc.text(q.cliente_direccion, marginL + 48, y); y += 15 }
   if (q.cliente_correo) { doc.text(q.cliente_correo, marginL + 48, y); y += 15 }
@@ -980,10 +1033,10 @@ async function generarPdfCotizacion(q, nombreArchivo) {
       fmtMoney(it.valorUnit), fmtMoney((Number(it.cantidad) || 0) * (Number(it.valorUnit) || 0)),
     ]),
     theme: 'plain',
-    styles: { font: 'times', fontSize: 9.5, cellPadding: { top: 6, bottom: 6, left: 3, right: 3 }, lineColor: [90, 90, 90], lineWidth: { bottom: 0.5 } },
-    headStyles: { font: 'times', fontStyle: 'bold', fontSize: 9, textColor: NAVY, lineColor: [0, 0, 0], lineWidth: { bottom: 0.75 } },
+    styles: { font: F.serif, fontStyle: 'normal', fontSize: 9.5, cellPadding: { top: 6, bottom: 6, left: 3, right: 3 }, lineColor: [90, 90, 90], lineWidth: { bottom: 0.5 } },
+    headStyles: { font: F.slab, fontStyle: 'bold', fontSize: 9, textColor: NAVY, lineColor: [0, 0, 0], lineWidth: { bottom: 0.75 } },
     columnStyles: {
-      0: { cellWidth: 34, halign: 'center', fontStyle: 'bold', textColor: NAVY },
+      0: { cellWidth: 34, halign: 'center', font: F.serif, fontStyle: 'bold', textColor: NAVY },
       1: { cellWidth: 'auto' },
       2: { cellWidth: 50, halign: 'center' },
       3: { cellWidth: 60, halign: 'center' },
@@ -1003,22 +1056,22 @@ async function generarPdfCotizacion(q, nombreArchivo) {
     startY: doc.lastAutoTable.finalY + 20,
     body: totalRows,
     theme: 'plain',
-    styles: { font: 'times', fontSize: 9, fontStyle: 'bold', cellPadding: 6, lineColor: [0, 0, 0], lineWidth: { bottom: 0.5 } },
-    columnStyles: { 0: { textColor: NAVY, cellWidth: totalsW * 0.55 }, 1: { textColor: 0, halign: 'right', cellWidth: totalsW * 0.45 } },
+    styles: { fontStyle: 'bold', fontSize: 9, cellPadding: 6, lineColor: [0, 0, 0], lineWidth: { bottom: 0.5 } },
+    columnStyles: { 0: { font: F.slab, textColor: NAVY, cellWidth: totalsW * 0.55 }, 1: { font: F.serif, textColor: 0, halign: 'right', cellWidth: totalsW * 0.45 } },
     margin: { left: pageW - marginR - totalsW },
     didParseCell: (data) => { if (data.row.index === totalNetoIdx) data.cell.styles.fillColor = GRAY_FILL },
   })
 
   let by = doc.lastAutoTable.finalY + 18
-  doc.setFont('times', 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
+  doc.setFont(F.slab, 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
   const banco = ['Datos Bancarios:', ...DATOS_BANCARIOS]
   banco.forEach((line, i) => doc.text(line, marginL, by + i * 12.5))
 
   let cy = by + banco.length * 12.5 + 20
   function bloque(titulo, lineas) {
-    doc.setFont('times', 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
+    doc.setFont(F.slab, 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
     doc.text(titulo, marginL, cy); cy += 13
-    doc.setFont('times', 'normal'); doc.setFontSize(8.5); doc.setTextColor(0, 0, 0)
+    doc.setFont(F.slab, 'normal'); doc.setFontSize(8.5); doc.setTextColor(0, 0, 0)
     lineas.forEach(l => {
       const wrapped = doc.splitTextToSize('- ' + l, contentW)
       doc.text(wrapped, marginL, cy); cy += wrapped.length * 11 + 4
