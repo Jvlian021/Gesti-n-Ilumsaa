@@ -190,7 +190,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
   const manana = reservas.filter(r => r.fecha === tomorrow).length
   const cotPend = cotizaciones.filter(c => c.estado === 'Pendiente').length
 
-  const days = [...Array(5)].map((_, i) => addDays(calWeekStart, i)) // Lun–Vie
+  const days = [...Array(7)].map((_, i) => addDays(calWeekStart, i)) // Lun–Dom
 
   const [qSize, setQSize] = useState('13')
   const [qDate, setQDate] = useState(today)
@@ -232,7 +232,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
               <h2>Calendario de camiones</h2>
               <div className="week-nav">
                 <button onClick={() => setCalWeekStart(addDays(calWeekStart, -7))}>‹</button>
-                <span className="range">{days[0].getDate()} – {days[4].getDate()} de {MESES[days[4].getMonth()].charAt(0) + MESES[days[4].getMonth()].slice(1).toLowerCase()}, {days[4].getFullYear()}</span>
+                <span className="range">{days[0].getDate()} – {days[6].getDate()} de {MESES[days[6].getMonth()].charAt(0) + MESES[days[6].getMonth()].slice(1).toLowerCase()}, {days[6].getFullYear()}</span>
                 <button onClick={() => setCalWeekStart(addDays(calWeekStart, 7))}>›</button>
                 <button className="today-btn" onClick={() => setCalWeekStart(startOfWorkWeek(new Date()))}>Hoy</button>
               </div>
