@@ -1081,7 +1081,13 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
   function addItem() { setItems(rows => [...rows, nuevoItem()]) }
   function removeItem(i) { setItems(rows => rows.length > 1 ? rows.filter((_, idx) => idx !== i) : rows) }
 
-  const itemTraslado = { descripcion: `Traslado a ${trasladoComuna || '—'} (ida y vuelta)`, unidad: 'un', cantidad: trasladoCantidad, valorUnit: trasladoValor }
+  // Descripción del traslado: se autocompleta según la comuna elegida, pero también se puede escribir a mano en la tabla de ítems
+  const [trasladoDescripcion, setTrasladoDescripcion] = useState('')
+  const [trasladoDescEditada, setTrasladoDescEditada] = useState(false)
+  useEffect(() => { if (!trasladoDescEditada) setTrasladoDescripcion(`Traslado a ${trasladoComuna || '—'} (ida y vuelta)`) }, [trasladoComuna, trasladoDescEditada])
+  function onChangeTrasladoDescripcion(v) { setTrasladoDescripcion(v); setTrasladoDescEditada(true) }
+
+  const itemTraslado = { descripcion: trasladoDescripcion, unidad: 'un', cantidad: trasladoCantidad, valorUnit: trasladoValor }
   const itemsFinal = incluirTraslado ? [...items, itemTraslado] : items
 
   const subtotal = itemsFinal.reduce((s, it) => s + (Number(it.cantidad) || 0) * (Number(it.valorUnit) || 0), 0)
@@ -1095,7 +1101,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
     setFecha(today); setItems([nuevoItem()])
     setAplicaDescuento(false); setDescuentoPct(''); setCondiciones(CONDICIONES_DEFAULT)
     setNumeroEditado(false); setArchivoEditado(false)
-    setIncluirTraslado(true); setTrasladoCantidad(1); setTrasladoValorEditado(false); setTrasladoTamano('13')
+    setIncluirTraslado(true); setTrasladoCantidad(1); setTrasladoValorEditado(false); setTrasladoTamano('13'); setTrasladoDescEditada(false)
   }
 
   async function guardarYDescargar() {
@@ -1162,30 +1168,35 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
                 <td>{items.length > 1 && <button className="btn-danger btn-sm" onClick={() => removeItem(i)}>×</button>}</td>
               </tr>
             ))}
+            {incluirTraslado && (
+              <tr style={{background:'var(--bg2, #fafafa)'}}>
+                <td><input type="text" value={trasladoDescripcion} onChange={e => onChangeTrasladoDescripcion(e.target.value)} style={{width:'100%'}} /></td>
+                <td><span className="mono">un</span></td>
+                <td><input type="text" inputMode="numeric" value={trasladoCantidad} onChange={e => setTrasladoCantidad(e.target.value.replace(/[^\d]/g, ''))} style={{width:70}} /></td>
+                <td><input type="text" inputMode="numeric" value={fmtInputMoney(trasladoValor)} onChange={e => onChangeTrasladoValor(e.target.value)} style={{width:110}} /></td>
+                <td className="mono">{fmtMoney((Number(trasladoCantidad) || 0) * (Number(trasladoValor) || 0))}</td>
+                <td><button className="btn-danger btn-sm" onClick={() => setIncluirTraslado(false)}>×</button></td>
+              </tr>
+            )}
           </tbody>
         </table>
-        <button className="btn-outline btn-sm" style={{marginTop:8}} onClick={addItem}>+ Agregar ítem</button>
-
-        <div className="section-sub" style={{margin:'16px 0 8px', display:'flex', alignItems:'center', gap:8}}>
-          <label style={{display:'flex', alignItems:'center', gap:6}}>
-            <input type="checkbox" checked={incluirTraslado} onChange={e => setIncluirTraslado(e.target.checked)} /> Traslado
-          </label>
-          <span style={{fontWeight:400, color:'var(--mute2)'}}>· se agrega solo como ítem final, calculado desde Tarifas</span>
+        <div style={{display:'flex', gap:8, marginTop:8}}>
+          <button className="btn-outline btn-sm" onClick={addItem}>+ Agregar ítem</button>
+          {!incluirTraslado && <button className="btn-outline btn-sm" onClick={() => setIncluirTraslado(true)}>+ Agregar traslado</button>}
         </div>
+
         {incluirTraslado && (
-          <div className="quick-row" style={{gridTemplateColumns:'1fr 1fr 0.6fr 0.8fr'}}>
-            <div className="f-group"><label>Tamaño de camión</label>
+          <div className="quick-row" style={{gridTemplateColumns:'1fr 1fr', marginTop:12}}>
+            <div className="f-group"><label>Traslado · tamaño de camión (para sugerir el valor)</label>
               <select value={trasladoTamano} onChange={e => setTrasladoTamano(e.target.value)}>
                 <option value="13">13 metros</option><option value="20">20 metros</option><option value="28">28 metros</option>
               </select>
             </div>
-            <div className="f-group"><label>Comuna de destino</label>
+            <div className="f-group"><label>Traslado · comuna de destino</label>
               <select value={trasladoComuna} onChange={e => setTrasladoComuna(e.target.value)}>
                 {tarifasComunas.map(c => <option key={c.id} value={c.comuna}>{c.comuna}</option>)}
               </select>
             </div>
-            <div className="f-group"><label>Cantidad</label><input type="text" inputMode="numeric" value={trasladoCantidad} onChange={e => setTrasladoCantidad(e.target.value.replace(/[^\d]/g, ''))} /></div>
-            <div className="f-group"><label>Valor (ida y vuelta)</label><input type="text" inputMode="numeric" value={fmtInputMoney(trasladoValor)} onChange={e => onChangeTrasladoValor(e.target.value)} /></div>
           </div>
         )}
 
