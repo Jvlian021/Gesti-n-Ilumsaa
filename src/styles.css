@@ -86,7 +86,7 @@ background:radial-gradient(circle at 15% 20%, rgba(233,106,12,.14), transparent 
 .stat-card.blue .val{color:var(--blue);}
 .stat-card.purple .val{color:var(--purple);}
 
-.grid-2col{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px;align-items:start;}
+.grid-2col{display:grid;grid-template-columns:minmax(0,1fr) 225px;gap:16px;align-items:start;}
 @media(max-width:1000px){.grid-2col{grid-template-columns:1fr;}}
 
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 18px 20px;margin-bottom:16px;}
@@ -98,7 +98,7 @@ background:radial-gradient(circle at 15% 20%, rgba(233,106,12,.14), transparent 
 .week-nav .today-btn{border:1px solid var(--border);background:#fff;border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;color:var(--text);}
 
 .cal-wrap{overflow-x:auto;}
-table.calendar{border-collapse:collapse;width:100%;min-width:760px;}
+table.calendar{border-collapse:collapse;width:100%;min-width:1060px;}
 table.calendar th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--mute);text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);}
 table.calendar td{padding:5px;vertical-align:middle;}
 .truck-cell{min-width:150px;padding:8px !important;}
