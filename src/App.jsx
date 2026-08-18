@@ -295,7 +295,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
             <div className="quick-row">
               <div className="f-group"><label>Tamaño de camión</label>
                 <select value={qSize} onChange={e => setQSize(e.target.value)}>
-                  <option value="13">13 metros</option><option value="20">20 metros</option><option value="28">28 metros</option>
+                  <option value="13">13 metros</option><option value="20">20 metros</option>
                 </select>
               </div>
               <div className="f-group"><label>Fecha</label><input type="date" value={qDate} onChange={e => setQDate(e.target.value)} /></div>
@@ -425,7 +425,7 @@ function Camiones({ camiones, isAdmin, toast, reload }) {
                 </td>
                 <td>{isAdmin ? (
                   <select value={c.tamano} onChange={e => editField(c.id, 'tamano', e.target.value)}>
-                    <option value={13}>13 m</option><option value={20}>20 m</option><option value={28}>28 m</option>
+                    <option value={13}>13 m</option><option value={20}>20 m</option>
                   </select>
                 ) : `${c.tamano} m`}</td>
                 <td>{isAdmin ? (
@@ -467,7 +467,7 @@ function Camiones({ camiones, isAdmin, toast, reload }) {
             <div className="f-group"><label>Patente</label><input type="text" value={form.patente} onChange={e => setForm({...form, patente: e.target.value})} placeholder="Ej: AB-CD-12" /></div>
             <div className="f-group"><label>Tamaño</label>
               <select value={form.tamano} onChange={e => setForm({...form, tamano: e.target.value})}>
-                <option value="13">13 metros</option><option value="20">20 metros</option><option value="28">28 metros</option>
+                <option value="13">13 metros</option><option value="20">20 metros</option>
               </select>
             </div>
             <div className="f-group"><label>¿Aislado?</label>
@@ -773,7 +773,7 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
         <table className="data">
           <thead><tr><th>Tamaño</th><th>Valor por hora</th></tr></thead>
           <tbody>
-            {[13, 20, 28].map(sz => (
+            {[13, 20].map(sz => (
               <tr key={sz}>
                 <td>{sz} metros</td>
                 <td>{isAdmin
@@ -797,15 +797,15 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
           </div>
         </div>
         <table className="data">
-          <thead><tr><th>Comuna</th><th>13 metros</th><th>20 metros</th><th>28 metros</th>{isAdmin && <th></th>}</tr></thead>
+          <thead><tr><th>Comuna</th><th>13 metros</th><th>20 metros</th>{isAdmin && <th></th>}</tr></thead>
           <tbody>
-            {!visibles.length && <tr><td colSpan={5} style={{textAlign:'center',color:'var(--mute2)',padding:20}}>No hay comunas que coincidan.</td></tr>}
+            {!visibles.length && <tr><td colSpan={4} style={{textAlign:'center',color:'var(--mute2)',padding:20}}>No hay comunas que coincidan.</td></tr>}
             {visibles.map((c) => {
               const i = comunas.findIndex(x => x.id === c.id)
               return (
                 <tr key={c.id}>
                   <td><strong>{c.comuna}</strong></td>
-                  {['p13', 'p20', 'p28'].map(k => (
+                  {['p13', 'p20'].map(k => (
                     <td key={k}>{isAdmin
                       ? <input type="text" inputMode="numeric" value={fmtInputMoney(comunas[i][k])} onChange={e => { const cp = [...comunas]; cp[i] = {...cp[i], [k]: parseMoneyInput(e.target.value)}; setComunas(cp) }} />
                       : <span className="mono">{fmtMoney(c[k])}</span>}
@@ -820,11 +820,10 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
         {isAdmin && (
           <div style={{padding:16,borderTop:'1px solid var(--border)'}}>
             <div className="section-sub" style={{margin:'0 0 10px'}}>Agregar una comuna nueva a la lista</div>
-            <div className="quick-row" style={{gridTemplateColumns:'1.3fr 1fr 1fr 1fr auto'}}>
+            <div className="quick-row" style={{gridTemplateColumns:'1.3fr 1fr 1fr auto'}}>
               <div className="f-group"><label>Comuna</label><input type="text" value={nueva.comuna} onChange={e => setNueva({...nueva, comuna: e.target.value})} placeholder="Nombre de la comuna" /></div>
               <div className="f-group"><label>13 m</label><input type="text" inputMode="numeric" value={nueva.p13 === '' ? '' : fmtInputMoney(nueva.p13)} onChange={e => setNueva({...nueva, p13: parseMoneyInput(e.target.value)})} placeholder="0" /></div>
               <div className="f-group"><label>20 m</label><input type="text" inputMode="numeric" value={nueva.p20 === '' ? '' : fmtInputMoney(nueva.p20)} onChange={e => setNueva({...nueva, p20: parseMoneyInput(e.target.value)})} placeholder="0" /></div>
-              <div className="f-group"><label>28 m</label><input type="text" inputMode="numeric" value={nueva.p28 === '' ? '' : fmtInputMoney(nueva.p28)} onChange={e => setNueva({...nueva, p28: parseMoneyInput(e.target.value)})} placeholder="0" /></div>
               <button className="btn-dark" onClick={addComuna}>Agregar</button>
             </div>
           </div>
@@ -1108,6 +1107,14 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
   const [condiciones, setCondiciones] = useState(CONDICIONES_DEFAULT)
   const [guardando, setGuardando] = useState(false)
 
+  // Selección múltiple para borrar varias cotizaciones guardadas de una vez.
+  const [selectMode, setSelectMode] = useState(false)
+  const [seleccionadas, setSeleccionadas] = useState([])
+  function toggleSelectMode() { setSelectMode(v => !v); setSeleccionadas([]) }
+  function toggleSeleccionada(id) {
+    setSeleccionadas(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
   // Nombre del archivo: se autocompleta con PPTO<número>_<CLIENTE>, pero se puede editar a mano
   const [nombreArchivo, setNombreArchivo] = useState(nombreArchivoDefault(nextNumero, ''))
   const [archivoEditado, setArchivoEditado] = useState(false)
@@ -1183,6 +1190,21 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
     reload(); toast('Cotización marcada como confirmada')
   }
 
+  async function deleteCotizacion(q) {
+    if (!window.confirm(`¿Eliminar la cotización N° ${String(q.numero || 0).padStart(6, '0')} de "${q.cliente}"? Esto no se puede deshacer.`)) return
+    const { error } = await supabase.from('cotizaciones').delete().eq('id', q.id)
+    if (error) { toast('No se pudo eliminar la cotización'); return }
+    toast('Cotización eliminada'); reload()
+  }
+
+  async function deleteSeleccionadas() {
+    if (!seleccionadas.length) return
+    if (!window.confirm(`¿Eliminar ${seleccionadas.length} cotización(es) seleccionada(s)? Esto no se puede deshacer.`)) return
+    const { error } = await supabase.from('cotizaciones').delete().in('id', seleccionadas)
+    if (error) { toast('No se pudieron eliminar las cotizaciones'); return }
+    toast('Cotizaciones eliminadas'); setSeleccionadas([]); setSelectMode(false); reload()
+  }
+
   const sorted = [...cotizaciones].sort((a, b) => (b.numero || 0) - (a.numero || 0))
 
   return (
@@ -1241,7 +1263,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
           <div className="quick-row" style={{gridTemplateColumns:'1fr 1fr', marginTop:12}}>
             <div className="f-group"><label>Traslado · tamaño de camión (para sugerir el valor)</label>
               <select value={trasladoTamano} onChange={e => setTrasladoTamano(e.target.value)}>
-                <option value="13">13 metros</option><option value="20">20 metros</option><option value="28">28 metros</option>
+                <option value="13">13 metros</option><option value="20">20 metros</option>
               </select>
             </div>
             <div className="f-group"><label>Traslado · comuna de destino</label>
@@ -1278,13 +1300,24 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
       </div>
 
       <div className="card" style={{padding:0}}>
-        <div className="card-head" style={{padding:'18px 18px 0'}}><h2>Cotizaciones guardadas</h2></div>
+        <div className="card-head" style={{padding:'18px 18px 0'}}>
+          <h2>Cotizaciones guardadas</h2>
+          <div style={{display:'flex',gap:8}}>
+            {selectMode && seleccionadas.length > 0 && (
+              <button className="btn-danger btn-sm" onClick={deleteSeleccionadas}>Eliminar seleccionadas ({seleccionadas.length})</button>
+            )}
+            <button className="btn-outline btn-sm" onClick={toggleSelectMode}>{selectMode ? 'Cancelar selección' : 'Seleccionar varias'}</button>
+          </div>
+        </div>
         <table className="data">
-          <thead><tr><th>N°</th><th>Cliente</th><th>Fecha</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr>{selectMode && <th></th>}<th>N°</th><th>Cliente</th><th>Fecha</th><th>Total</th><th>Estado</th><th></th></tr></thead>
           <tbody>
-            {!sorted.length && <tr><td colSpan={6} style={{textAlign:'center',color:'var(--mute2)',padding:24}}>Aún no hay cotizaciones guardadas.</td></tr>}
+            {!sorted.length && <tr><td colSpan={selectMode ? 7 : 6} style={{textAlign:'center',color:'var(--mute2)',padding:24}}>Aún no hay cotizaciones guardadas.</td></tr>}
             {sorted.map(q => (
               <tr key={q.id}>
+                {selectMode && (
+                  <td><input type="checkbox" checked={seleccionadas.includes(q.id)} onChange={() => toggleSeleccionada(q.id)} /></td>
+                )}
                 <td className="mono">{String(q.numero || 0).padStart(6, '0')}</td>
                 <td><strong>{q.cliente}</strong></td>
                 <td className="mono">{new Date(q.fecha + 'T00:00:00').toLocaleDateString('es-CL')}</td>
@@ -1293,6 +1326,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
                 <td style={{display:'flex',gap:6}}>
                   <button className="btn-outline btn-sm" onClick={() => generarPdfCotizacion(q)}>Descargar PDF</button>
                   {q.estado === 'Pendiente' && <button className="btn-dark btn-sm" onClick={() => marcarConfirmada(q)}>Marcar confirmada</button>}
+                  <button className="btn-danger btn-sm" onClick={() => deleteCotizacion(q)}>Eliminar</button>
                 </td>
               </tr>
             ))}
