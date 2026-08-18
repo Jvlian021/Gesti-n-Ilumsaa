@@ -1209,7 +1209,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
           <tbody>
             {items.map((it, i) => (
               <tr key={i}>
-                <td><input type="text" value={it.descripcion} onChange={e => updateItem(i, 'descripcion', e.target.value)} placeholder="Arriendo de camión alza hombre de..." style={{width:'100%'}} /></td>
+                <td className="desc-cell"><textarea className="desc-input" value={it.descripcion} onChange={e => updateItem(i, 'descripcion', e.target.value)} placeholder="Arriendo de camión alza hombre de..." rows={2} /></td>
                 <td>
                   <select value={it.unidad} onChange={e => updateItem(i, 'unidad', e.target.value)}>
                     <option value="Hora">Hora</option><option value="Día">Día</option><option value="Semana">Semana</option>
@@ -1223,7 +1223,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
             ))}
             {incluirTraslado && (
               <tr style={{background:'var(--bg2, #fafafa)'}}>
-                <td><input type="text" value={trasladoDescripcion} onChange={e => onChangeTrasladoDescripcion(e.target.value)} style={{width:'100%'}} /></td>
+                <td className="desc-cell"><textarea className="desc-input" value={trasladoDescripcion} onChange={e => onChangeTrasladoDescripcion(e.target.value)} rows={2} /></td>
                 <td><span className="mono">un</span></td>
                 <td><input type="text" inputMode="numeric" value={trasladoCantidad} onChange={e => setTrasladoCantidad(e.target.value.replace(/[^\d]/g, ''))} style={{width:70}} /></td>
                 <td><input type="text" inputMode="numeric" value={fmtInputMoney(trasladoValor)} onChange={e => onChangeTrasladoValor(e.target.value)} style={{width:110}} /></td>
