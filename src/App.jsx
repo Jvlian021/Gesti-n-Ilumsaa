@@ -901,7 +901,7 @@ function nombreArchivoDefault(numero, cliente) {
 // Carga el logo y su tamaño real, para dibujarlo sin deformarlo (mantiene su proporción original)
 async function getLogoInfo() {
   try {
-    const res = await fetch('/logo.png')
+    const res = await fetch('/logo-pdf.png')
     const blob = await res.blob()
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -934,15 +934,16 @@ async function generarPdfCotizacion(q, nombreArchivo) {
   // Logo a su proporción real (no se aplasta), con una altura fija cómoda
   let logoW = 0
   if (logo) {
-    const maxH = 46, maxW = 110
+    const maxH = 46, maxW = 95
     const ratio = logo.w / logo.h
     let lh = maxH, lw = maxH * ratio
     if (lw > maxW) { lw = maxW; lh = maxW / ratio }
     logoW = lw
     try { doc.addImage(logo.dataUrl, 'PNG', marginL, y, lw, lh) } catch (e) { /* logo opcional */ }
   }
-  const headStartX = marginL + Math.max(logoW, 46) + 14
-  const headCenterX = headStartX + (pageW - marginR - headStartX) / 2
+  // Centrado sobre todo el ancho de la hoja (igual que en la plantilla original), no solo
+  // en el espacio a la derecha del logo — así el título queda alineado con la tabla de abajo.
+  const headCenterX = (marginL + pageW - marginR) / 2
   doc.setFont('times', 'bold'); doc.setFontSize(17); doc.setTextColor(...NAVY)
   doc.text(DATOS_EMPRESA.razon, headCenterX, y + 13, { align: 'center' })
   doc.setFont('times', 'normal'); doc.setFontSize(9.5); doc.setTextColor(30, 30, 30)
