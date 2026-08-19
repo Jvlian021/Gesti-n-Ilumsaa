@@ -55,7 +55,7 @@ export default function App() {
   const [view, setView] = useState('dashboard')
   const [toastMsg, setToastMsg] = useState('')
   const [calWeekStart, setCalWeekStart] = useState(todayMidnight())
-  const [reservaModal, setReservaModal] = useState({ show: false, camionId: '', fecha: '', editReserva: null })
+  const [reservaModal, setReservaModal] = useState({ show: false, camionId: '', fecha: '', editReserva: null, prefill: null })
   const [confirmState, setConfirmState] = useState(null)
 
   const [camiones, setCamiones] = useState([])
@@ -124,8 +124,17 @@ export default function App() {
     if (confirmState) confirmState.resolve(result)
     setConfirmState(null)
   }
-  function openReserva(camionId, fecha) { setReservaModal({ show: true, camionId, fecha, editReserva: null }) }
-  function openReservaEdit(reserva) { setReservaModal({ show: true, camionId: reserva.camion_id, fecha: reserva.fecha, editReserva: reserva }) }
+  function openReserva(camionId, fecha) { setReservaModal({ show: true, camionId, fecha, editReserva: null, prefill: null }) }
+  function openReservaEdit(reserva) { setReservaModal({ show: true, camionId: reserva.camion_id, fecha: reserva.fecha, editReserva: reserva, prefill: null }) }
+  // Abre el formulario de "Nueva reserva" ya precargado con los datos de una cotización recién
+  // confirmada (empresa, contacto, comuna). El camión queda sugerido según el tamaño cotizado
+  // (si hay uno disponible hoy), pero siempre hay que confirmarlo/elegirlo antes de guardar.
+  function openReservaDraft(prefill) {
+    const hoy = isoDate(new Date())
+    const tamano = prefill?.tamano ? Number(prefill.tamano) : null
+    const sugerido = tamano ? camiones.find(c => c.tamano === tamano && camionEstadoEnFecha(c, hoy, reservas) === 'Disponible') : null
+    setReservaModal({ show: true, camionId: sugerido?.id || '', fecha: hoy, editReserva: null, prefill })
+  }
   function closeReserva() { setReservaModal(m => ({ ...m, show: false })) }
 
   if (session === undefined) return <div className="loading-screen">Cargando…</div>
@@ -169,14 +178,14 @@ export default function App() {
           />
         )}
         {view === 'cotizaciones' && (
-          <Cotizaciones cotizaciones={cotizaciones} tarifasComunas={tarifasComunas} tarifaArriendo={tarifaArriendo} clientes={clientes} perfil={perfil} toast={toast} reload={loadAll} confirm={confirmDialog} />
+          <Cotizaciones cotizaciones={cotizaciones} tarifasComunas={tarifasComunas} tarifaArriendo={tarifaArriendo} clientes={clientes} perfil={perfil} toast={toast} reload={loadAll} confirm={confirmDialog} openReservaDraft={openReservaDraft} />
         )}
       </main>
       <ReservaModal
         show={reservaModal.show} onClose={closeReserva}
         camiones={camiones} tarifasComunas={tarifasComunas} conductores={conductores} clientes={clientes}
         perfil={perfil} toast={toast} reload={loadAll} confirm={confirmDialog}
-        initialCamionId={reservaModal.camionId} initialFecha={reservaModal.fecha} editReserva={reservaModal.editReserva}
+        initialCamionId={reservaModal.camionId} initialFecha={reservaModal.fecha} editReserva={reservaModal.editReserva} initialPrefill={reservaModal.prefill}
       />
       <ConfirmModal state={confirmState} onResult={resolveConfirm} />
       <div className={`toast ${toastMsg ? 'show' : ''}`}>{toastMsg}</div>
@@ -909,7 +918,7 @@ function Reservas({ camiones, reservas, conductores, tarifasComunas, perfil, toa
 }
 
 // ============================================================
-function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, clientes, perfil, toast, reload, confirm, initialCamionId, initialFecha, editReserva }) {
+function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, clientes, perfil, toast, reload, confirm, initialCamionId, initialFecha, editReserva, initialPrefill }) {
   const today = isoDate(new Date())
   const [form, setForm] = useState({ camionId: '', empresa: '', cliente: '', contacto: '', tipoTrabajo: '', fecha: today, hasta: '', hora: '', comuna: '', direccion: '', estado: 'Reservado', conductorId: '', descripcion: '' })
   const isEdit = !!editReserva
@@ -938,11 +947,15 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
         camionId: initialCamionId || camiones[0]?.id || '',
         fecha: initialFecha || today,
         hasta: initialFecha || today,
-        hora: '', empresa: '', cliente: '', contacto: '', tipoTrabajo: '', direccion: '', conductorId: '', descripcion: '', estado: 'Reservado',
-        comuna: '',
+        hora: '', tipoTrabajo: '', conductorId: '', descripcion: '', estado: 'Reservado',
+        empresa: initialPrefill?.empresa || '',
+        cliente: initialPrefill?.cliente || '',
+        contacto: initialPrefill?.contacto || '',
+        comuna: initialPrefill?.comuna || '',
+        direccion: initialPrefill?.direccion || '',
       }))
     }
-  }, [show, initialCamionId, initialFecha, editReserva]) // eslint-disable-line
+  }, [show, initialCamionId, initialFecha, editReserva, initialPrefill]) // eslint-disable-line
 
   useEffect(() => {
     if (!show) return
@@ -1650,7 +1663,7 @@ async function generarPdfCotizacion(q, nombreArchivo) {
   doc.save(`${nombre.replace(/\.pdf$/i, '')}.pdf`)
 }
 
-function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, perfil, toast, reload, confirm }) {
+function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, perfil, toast, reload, confirm, openReservaDraft }) {
   const today = isoDate(new Date())
   const nextNumero = cotizaciones.reduce((max, c) => Math.max(max, c.numero || 0), 0) + 1
 
@@ -1835,6 +1848,10 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
     const payload = {
       numero: Number(numero), cliente: cliente.trim(), cliente_rut: clienteRut || null,
       cliente_direccion: clienteDireccion || null, cliente_correo: clienteCorreo || null,
+      cliente_nombre_contacto: clienteNombre.trim() || null, cliente_contacto: clienteContacto.trim() || null,
+      // Tamaño y comuna del traslado cotizado — quedan guardados para poder sugerir el camión
+      // correcto y precargar la comuna al confirmar la cotización y crear la reserva.
+      tamano: incluirTraslado ? Number(trasladoTamano) : null, comuna: incluirTraslado ? (trasladoComuna || null) : null,
       fecha, items: itemsFinal, descuento_pct: aplicaDescuento ? Number(descuentoPct) || 0 : 0,
       subtotal, neto, iva, total, condiciones, estado: 'Pendiente', creado_por: perfil.id, creado_por_nombre: perfil.nombre,
     }
@@ -1852,7 +1869,18 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
   async function marcarConfirmada(q) {
     const { error } = await supabase.from('cotizaciones').update({ estado: 'Confirmada' }).eq('id', q.id)
     if (error) { toast('No se pudo actualizar'); return }
-    reload(); toast('Cotización marcada como confirmada')
+    reload(); toast('Cotización confirmada')
+    // Abre el formulario de nueva reserva precargado con los datos de la cotización — solo
+    // falta confirmar (o cambiar) el camión sugerido y la fecha del servicio.
+    if (openReservaDraft) {
+      openReservaDraft({
+        empresa: q.cliente || '',
+        cliente: q.cliente_nombre_contacto || '',
+        contacto: q.cliente_contacto || '',
+        comuna: q.comuna || '',
+        tamano: q.tamano || null,
+      })
+    }
   }
 
   async function deleteCotizacion(q) {
