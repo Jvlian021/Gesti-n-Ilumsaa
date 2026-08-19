@@ -997,7 +997,11 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload, confi
       supabase.from('tarifas_arriendo').upsert(upsertsArriendo),
       supabase.from('tarifas_comunas').upsert(upsertsComunas),
     ])
-    if (r1.error || r2.error) { toast('No se pudieron guardar las tarifas'); return }
+    if (r1.error || r2.error) {
+      console.error('tarifas_arriendo.upsert', r1.error); console.error('tarifas_comunas.upsert', r2.error)
+      toast('No se pudieron guardar: ' + ((r1.error || r2.error).message || 'revisa la consola'))
+      return
+    }
     toast('Tarifas guardadas'); reload()
   }
 
@@ -1006,7 +1010,7 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload, confi
     const { error } = await supabase.from('tarifas_comunas').insert({
       comuna: nueva.comuna.trim(), p13: Number(nueva.p13)||0, p18: Number(nueva.p18)||0, p20: Number(nueva.p20)||0,
     })
-    if (error) { toast('No se pudo agregar (¿ya existe esa comuna?)'); return }
+    if (error) { console.error('tarifas_comunas.insert', error); toast('No se pudo agregar: ' + (error.message || '¿ya existe esa comuna?')); return }
     setNueva({ comuna: '', p13: '', p18: '', p20: '' })
     reload(); toast('Comuna agregada')
   }
