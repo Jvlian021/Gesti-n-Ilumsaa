@@ -124,7 +124,7 @@ export default function App() {
           />
         )}
         {view === 'cotizaciones' && (
-          <Cotizaciones cotizaciones={cotizaciones} tarifasComunas={tarifasComunas} perfil={perfil} toast={toast} reload={loadAll} />
+          <Cotizaciones cotizaciones={cotizaciones} tarifasComunas={tarifasComunas} tarifaArriendo={tarifaArriendo} perfil={perfil} toast={toast} reload={loadAll} />
         )}
       </main>
       <ReservaModal
@@ -885,23 +885,24 @@ const DATOS_BANCARIOS = [
   'Cuenta Corriente 293 77 293',
   'contacto@ilumsa.cl',
 ]
+// Todo el bloque de condiciones/equipo/responsabilidades/cancelaciones queda en un solo texto
+// editable. Las líneas que terminan en ":" se muestran como título en negrita en el PDF; el resto
+// se muestra como viñeta normal — así se puede modificar libremente cualquier parte desde la app.
 const CONDICIONES_DEFAULT = [
+  'Condiciones Comerciales:',
   'Para confirmar la reserva, se deberá emitir una Orden de Compra (OC) y realizar el pago del 50% del valor total cotizado. El saldo pendiente deberá ser cancelado al término de cada jornada de trabajo.',
   'En caso de extender el servicio del horario establecido, se adicionará el valor de forma proporcional.',
-].join('\n')
-const EQUIPO_TEXT = [
+  'Equipo y Operador:',
   'El servicio incluye conductor con licencia profesional vigente y certificación como operador de grúa.',
   'El equipo cuenta con Certificado de Hidroelevador vigente.',
   'El camión dispone de seguro vehicular externo vigente.',
   'El camión hidroelevador se encuentra equipado con conos de seguridad, botiquín de primeros auxilios y extintores vigentes, conforme a la normativa vigente.',
-]
-const RESPONSABILIDADES_TEXT = [
+  'Responsabilidades:',
   'Todo daño causado durante la ejecución del servicio será de exclusiva responsabilidad del arrendatario.',
   'Las multas derivadas de la falta de permisos, autorizaciones o documentación requerida serán responsabilidad de la empresa arrendataria.',
-]
-const CANCELACIONES_TEXT = [
+  'Cancelaciones:',
   'En caso de cancelación del arriendo sin aviso previo, se deberá cancelar como mínimo el costo asociado al traslado del equipo.',
-]
+].join('\n')
 
 // Colores exactos del formato Excel original (navy y azul medio)
 const NAVY = [0, 10, 116]
@@ -911,7 +912,7 @@ const GRAY_FILL = [237, 237, 237]
 // Texto por defecto del primer ítem — queda precargado pero se puede editar libremente
 const ITEM_DEFAULT_DESC = 'Arriendo de camión alza hombre de 20 metros de altura con canastillo doble (capacidad para dos personas) desde las 21:00 hrs. Incluye conductor/operador, combustible y tag.'
 
-function nuevoItem() { return { descripcion: ITEM_DEFAULT_DESC, unidad: 'Hora', cantidad: 1, valorUnit: 0 } }
+function nuevoItem() { return { descripcion: ITEM_DEFAULT_DESC, altura: '', unidad: 'Hora', cantidad: 1, valorUnit: 0 } }
 
 // Formatea un RUT chileno mientras se escribe: 779768414 -> 77.976.841-4 (sin que el usuario tenga que poner puntos ni guion)
 function formatRut(value) {
@@ -1100,26 +1101,27 @@ async function generarPdfCotizacion(q, nombreArchivo) {
   banco.forEach((line, i) => doc.text(line, marginL, by + i * 12.5))
 
   let cy = by + banco.length * 12.5 + 20
-  function bloque(titulo, lineas) {
-    doc.setFont(F.slab, 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
-    doc.text(titulo, marginL, cy); cy += 13
-    doc.setFont(F.slab, 'normal'); doc.setFontSize(8.5); doc.setTextColor(0, 0, 0)
-    lineas.forEach(l => {
+  // Un solo texto editable: las líneas que terminan en ":" se pintan como título en negrita
+  // (con espacio extra arriba), el resto como viñeta normal — igual que el formato original.
+  String(q.condiciones || '').split('\n').forEach(raw => {
+    const l = raw.trim()
+    if (!l) return
+    if (l.endsWith(':')) {
+      cy += 6
+      doc.setFont(F.slab, 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
+      doc.text(l, marginL, cy); cy += 13
+    } else {
+      doc.setFont(F.slab, 'normal'); doc.setFontSize(8.5); doc.setTextColor(0, 0, 0)
       const wrapped = doc.splitTextToSize('- ' + l, contentW)
       doc.text(wrapped, marginL, cy); cy += wrapped.length * 11 + 4
-    })
-    cy += 9
-  }
-  bloque('Condiciones Comerciales:', String(q.condiciones || '').split('\n').filter(Boolean))
-  bloque('Equipo y Operador:', EQUIPO_TEXT)
-  bloque('Responsabilidades:', RESPONSABILIDADES_TEXT)
-  bloque('Cancelaciones:', CANCELACIONES_TEXT)
+    }
+  })
 
   const nombre = (nombreArchivo && nombreArchivo.trim()) || nombreArchivoDefault(q.numero, q.cliente)
   doc.save(`${nombre.replace(/\.pdf$/i, '')}.pdf`)
 }
 
-function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
+function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, perfil, toast, reload }) {
   const today = isoDate(new Date())
   const nextNumero = cotizaciones.reduce((max, c) => Math.max(max, c.numero || 0), 0) + 1
 
@@ -1170,6 +1172,15 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
 
   function updateItem(i, field, value) {
     setItems(rows => rows.map((r, idx) => idx === i ? { ...r, [field]: value } : r))
+  }
+  // Al elegir la altura del camión, sugiere el valor unitario según la tarifa de arriendo por hora,
+  // pero el campo queda editable igual que siempre: el usuario puede modificarlo después.
+  function onChangeAltura(i, altura) {
+    setItems(rows => rows.map((r, idx) => {
+      if (idx !== i) return r
+      const sugerido = altura && tarifaArriendo[altura] != null ? Number(tarifaArriendo[altura]) || 0 : r.valorUnit
+      return { ...r, altura, valorUnit: sugerido }
+    }))
   }
   function addItem() { setItems(rows => [...rows, nuevoItem()]) }
   function removeItem(i) { setItems(rows => rows.length > 1 ? rows.filter((_, idx) => idx !== i) : rows) }
@@ -1260,11 +1271,17 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
 
         <div className="section-sub" style={{margin:'16px 0 8px'}}>Ítems</div>
         <table className="data">
-          <thead><tr><th>Descripción</th><th>Unidad</th><th>Cantidad</th><th>Valor unitario</th><th>Valor total</th><th></th></tr></thead>
+          <thead><tr><th>Descripción</th><th>Altura</th><th>Unidad</th><th>Cantidad</th><th>Valor unitario</th><th>Valor total</th><th></th></tr></thead>
           <tbody>
             {items.map((it, i) => (
               <tr key={i}>
                 <td className="desc-cell"><textarea className="desc-input" value={it.descripcion} onChange={e => updateItem(i, 'descripcion', e.target.value)} placeholder="Arriendo de camión alza hombre de..." rows={3} /></td>
+                <td>
+                  <select value={it.altura || ''} onChange={e => onChangeAltura(i, e.target.value)} style={{width:88}}>
+                    <option value="">—</option>
+                    <option value="13">13 m</option><option value="20">20 m</option>
+                  </select>
+                </td>
                 <td>
                   <select value={it.unidad} onChange={e => updateItem(i, 'unidad', e.target.value)}>
                     <option value="Hora">Hora</option><option value="Día">Día</option><option value="Semana">Semana</option>
@@ -1279,6 +1296,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
             {incluirTraslado && (
               <tr style={{background:'var(--bg2, #fafafa)'}}>
                 <td className="desc-cell"><textarea className="desc-input" value={trasladoDescripcion} onChange={e => onChangeTrasladoDescripcion(e.target.value)} rows={3} /></td>
+                <td><span className="mono">—</span></td>
                 <td><span className="mono">un</span></td>
                 <td><input type="text" inputMode="numeric" value={trasladoCantidad} onChange={e => setTrasladoCantidad(e.target.value.replace(/[^\d]/g, ''))} style={{width:70}} /></td>
                 <td><input type="text" inputMode="numeric" value={fmtInputMoney(trasladoValor)} onChange={e => onChangeTrasladoValor(e.target.value)} style={{width:110}} /></td>
@@ -1319,7 +1337,8 @@ function Cotizaciones({ cotizaciones, tarifasComunas, perfil, toast, reload }) {
         </div>
 
         <div className="f-group" style={{marginTop:16}}><label>Condiciones comerciales</label>
-          <textarea value={condiciones} onChange={e => setCondiciones(e.target.value)} rows={4} style={{width:'100%',padding:'9px 10px',border:'1px solid var(--border)',borderRadius:7,fontSize:'13.5px',fontFamily:'inherit',resize:'vertical'}} />
+          <div className="section-sub" style={{margin:'-2px 0 8px'}}>Las líneas que terminan en " : " se muestran como título en negrita en el PDF (ej: "Equipo y Operador:"); el resto se muestra como viñeta.</div>
+          <textarea value={condiciones} onChange={e => setCondiciones(e.target.value)} rows={14} style={{width:'100%',padding:'9px 10px',border:'1px solid var(--border)',borderRadius:7,fontSize:'13.5px',fontFamily:'inherit',resize:'vertical'}} />
         </div>
 
         <div className="result-box" style={{marginTop:16}}>
