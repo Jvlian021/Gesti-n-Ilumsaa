@@ -211,9 +211,10 @@ table.data textarea.desc-input{width:100%;min-width:260px;padding:8px 10px;borde
 .hist-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
 .hist-dow{text-align:center;font-size:10.5px;font-weight:700;color:var(--mute);text-transform:uppercase;padding-bottom:4px;}
 .hist-cell{position:relative;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-size:12.5px;color:var(--text);}
+.hist-cell.is-clickable{cursor:pointer;}
+.hist-cell.is-clickable:hover{background:#e9edf3;}
 .hist-cell.muted{color:var(--mute2);opacity:.4;}
-.hist-cell.has-items{cursor:pointer;background:var(--gray-bg);font-weight:700;}
-.hist-cell.has-items:hover{background:#e9edf3;}
+.hist-cell.has-items{background:var(--gray-bg);font-weight:700;}
 .hist-cell.is-today{outline:1.5px solid var(--orange);}
 .hist-cell.is-sel{background:var(--navy);color:#fff;}
 .hist-cell.is-sel .hist-dot{background:#fff;}
