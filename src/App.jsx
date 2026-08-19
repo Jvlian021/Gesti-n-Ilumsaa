@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabaseClient'
 import Login from './Login.jsx'
 import jsPDF from 'jspdf'
@@ -149,7 +149,7 @@ export default function App() {
       </main>
       <ReservaModal
         show={reservaModal.show} onClose={closeReserva}
-        camiones={camiones} tarifasComunas={tarifasComunas} conductores={conductores}
+        camiones={camiones} tarifasComunas={tarifasComunas} conductores={conductores} clientes={clientes}
         perfil={perfil} toast={toast} reload={loadAll}
         initialCamionId={reservaModal.camionId} initialFecha={reservaModal.fecha} editReserva={reservaModal.editReserva}
       />
@@ -495,8 +495,8 @@ function Camiones({ camiones, isAdmin, toast, reload }) {
       </div>
 
       {showModal && (
-        <div className="modal-bg show">
-          <div className="modal">
+        <div className="modal-bg show" onClick={() => setShowModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
             <button className="modal-close" onClick={() => setShowModal(false)} aria-label="Cerrar">×</button>
             <h3>Nuevo camión</h3>
             <div className="msub">Se agrega a la flota y aparece de inmediato para todo el equipo.</div>
@@ -749,7 +749,7 @@ function Reservas({ camiones, reservas, conductores, tarifasComunas, perfil, toa
 }
 
 // ============================================================
-function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, perfil, toast, reload, initialCamionId, initialFecha, editReserva }) {
+function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, clientes, perfil, toast, reload, initialCamionId, initialFecha, editReserva }) {
   const today = isoDate(new Date())
   const [form, setForm] = useState({ camionId: '', cliente: '', contacto: '', tipoTrabajo: '', fecha: today, hasta: '', hora: '', comuna: '', direccion: '', estado: 'Reservado', conductorId: '', descripcion: '' })
   const isEdit = !!editReserva
@@ -793,6 +793,16 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
   if (!show) return null
 
   const esMantencion = form.estado === 'Mantención'
+
+  function onChangeCliente(valor) {
+    const match = (clientes || []).find(c => c.nombre.trim().toLowerCase() === valor.trim().toLowerCase())
+    setForm(f => ({
+      ...f,
+      cliente: valor,
+      direccion: match && !f.direccion ? (match.direccion || '') : f.direccion,
+      contacto: match && !f.contacto ? (match.telefono || '') : f.contacto,
+    }))
+  }
 
   async function save() {
     if (!form.camionId || !form.fecha) { toast('Completa el camión y la fecha'); return }
@@ -842,8 +852,8 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
   const camionSel = camiones.find(c => c.id === form.camionId)
 
   return (
-    <div className="modal-bg show">
-      <div className="modal">
+    <div className="modal-bg show" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose} aria-label="Cerrar">×</button>
         <h3>{isEdit ? 'Editar reserva' : 'Nueva reserva'}</h3>
         <div className="msub">{camionSel ? `${camionSel.nombre} · ${new Date(form.fecha + 'T00:00:00').toLocaleDateString('es-CL')}` : 'Elige un camión disponible en la fecha indicada.'}</div>
@@ -865,7 +875,12 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
         </div>
         {esMantencion && <div className="section-sub" style={{margin:'-6px 0 12px'}}>El camión quedará en mantención en el calendario desde la fecha "Desde" hasta la fecha "Hasta".</div>}
         {!esMantencion && <>
-          <div className="f-group"><label>Cliente</label><input type="text" value={form.cliente} onChange={e => setForm({...form, cliente: e.target.value})} placeholder="Nombre cliente / empresa" /></div>
+          <div className="f-group"><label>Cliente</label>
+            <input type="text" list="dl-clientes-reserva" value={form.cliente} onChange={e => onChangeCliente(e.target.value)} placeholder="Nombre cliente / empresa" autoComplete="off" />
+            <datalist id="dl-clientes-reserva">
+              {(clientes || []).map(c => <option key={c.id} value={c.nombre} />)}
+            </datalist>
+          </div>
           <div className="f-group"><label>Contacto del cliente</label><input type="text" value={form.contacto} onChange={e => setForm({...form, contacto: e.target.value})} placeholder="Nombre y/o teléfono de contacto" /></div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
             <div className="f-group"><label>Tipo de trabajo</label>
@@ -1037,24 +1052,27 @@ const DATOS_BANCARIOS = [
   'Cuenta Corriente 293 77 293',
   'contacto@ilumsa.cl',
 ]
-// Todo el bloque de condiciones/equipo/responsabilidades/cancelaciones queda en un solo texto
-// editable. Las líneas que terminan en ":" se muestran como título en negrita en el PDF; el resto
-// se muestra como viñeta normal — así se puede modificar libremente cualquier parte desde la app.
+// El bloque de condiciones comerciales ahora es texto enriquecido (HTML), editable con el
+// mini-editor tipo Word (negrita + color de letra) que está más abajo. Los bloques que están
+// completos en negrita se muestran como título en negrita/azul en el PDF; el resto se muestra
+// como viñeta, respetando la negrita/color que se le haya puesto a cada palabra.
 const CONDICIONES_DEFAULT = [
-  'Condiciones Comerciales:',
-  'Para confirmar la reserva, se deberá emitir una Orden de Compra (OC) y realizar el pago del 50% del valor total cotizado. El saldo pendiente deberá ser cancelado al término de cada jornada de trabajo.',
-  'En caso de extender el servicio del horario establecido, se adicionará el valor de forma proporcional.',
-  'Equipo y Operador:',
-  'El servicio incluye conductor con licencia profesional vigente y certificación como operador de grúa.',
-  'El equipo cuenta con Certificado de Hidroelevador vigente.',
-  'El camión dispone de seguro vehicular externo vigente.',
-  'El camión hidroelevador se encuentra equipado con conos de seguridad, botiquín de primeros auxilios y extintores vigentes, conforme a la normativa vigente.',
-  'Responsabilidades:',
-  'Todo daño causado durante la ejecución del servicio será de exclusiva responsabilidad del arrendatario.',
-  'Las multas derivadas de la falta de permisos, autorizaciones o documentación requerida serán responsabilidad de la empresa arrendataria.',
-  'Cancelaciones:',
-  'En caso de cancelación del arriendo sin aviso previo, se deberá cancelar como mínimo el costo asociado al traslado del equipo.',
-].join('\n')
+  '<div><b>Condiciones Comerciales:</b></div>',
+  '<div>- <b>Reserva de Servicio:</b> Para garantizar la disponibilidad del equipo, se requiere la emisión de una Orden de Compra (OC) y/o el abono del 50% de la cotización. El saldo restante deberá ser regularizado al finalizar la prestación del servicio.</div>',
+  '<div>- <b>Continuidad por Condiciones Climáticas:</b> En caso de que factores climáticos impidan el desarrollo normal de las faenas, el cobro se limitará exclusivamente al tiempo de permanencia del equipo y personal en terreno, sin considerar necesariamente las horas de operación efectiva.</div>',
+  '<div>- <b>Extensiones de Horario:</b> Las labores que excedan el horario habitual (después de las 17:00 horas los días lunes y martes, y desde las 16:00 horas los días miércoles a viernes) tendrán un recargo del 30% del valor hora en jornada hábil. Para extensiones en horario inhábil, la hora se valorizará de forma proporcional.</div>',
+  '<div>- <b>Servicio de Arriendo de Arnés de Seguridad:</b> En caso de no contar con uno, el cliente podrá solicitar el arriendo de un arnés de seguridad certificado para el trabajo en altura. Su entrega estará sujeta a la firma de un check list de recepción y un deslinde de responsabilidad por mal uso. Es responsabilidad exclusiva del cliente garantizar que todo su personal en terreno cuente con los demás Equipos de Protección Personal (EPP) obligatorios, tales como casco de seguridad con barbiquejo, guantes y calzado de seguridad.</div>',
+  '<div><b>Equipamiento y Certificación:</b></div>',
+  '<div>- <b>Personal Calificado:</b> El servicio es operado exclusivamente por un conductor con licencia profesional y certificación técnica en operación de camiones alza hombre vigente.</div>',
+  '<div>- <b>Seguridad y Normativa:</b> El hidroelevador cuenta con su certificación técnica al día y está equipado íntegramente con elementos de seguridad (conos, botiquín y extintores) bajo la normativa vigente.</div>',
+  '<div>- <b>Respaldo:</b> La unidad dispone de seguro vehicular externo para cobertura de eventualidades durante el servicio.</div>',
+  '<div><b>Marco de Responsabilidad y Operación:</b></div>',
+  '<div>- <b>Cuidado del Activo:</b> Se solicita al arrendatario velar por la integridad del equipo durante su permanencia en la obra, asumiendo la responsabilidad por daños derivados de la manipulación o entorno de trabajo.</div>',
+  '<div>- <b>Facultad de Detención por Seguridad:</b> El conductor/operador está plenamente facultado para suspender las maniobras si evalúa que no se cumplen las condiciones mínimas de seguridad (tales como exceso de viento, falta de EPP o interferencias en el entorno). En este caso, se deberá cancelar el valor del traslado y el tiempo de permanencia del equipo en terreno.</div>',
+  '<div>- <b>Gestión Administrativa:</b> Es responsabilidad del cliente asegurar que el lugar de trabajo cuente con los permisos municipales o autorizaciones de tránsito necesarios para la operación, a fin de evitar interrupciones o sanciones administrativas.</div>',
+  '<div><b>Cancelaciones:</b></div>',
+  '<div>- <b>Aviso de Cancelación:</b> Ante una anulación del servicio sin anticipación, se procederá al cobro del valor asociado al traslado del equipo.</div>',
+].join('')
 
 // Colores exactos del formato Excel original (navy y azul medio)
 const NAVY = [0, 10, 116]
@@ -1159,6 +1177,114 @@ async function registerFonts(doc) {
   }
 }
 
+// --- Soporte de texto enriquecido (negrita + color) para "Condiciones comerciales" ---
+
+// true si el texto trae etiquetas HTML (viene del editor tipo Word). Si es una cotización
+// guardada antes de este cambio (texto plano con saltos de línea), se sigue mostrando con
+// el formato anterior más abajo, para no alterar cotizaciones ya emitidas.
+function isHtmlContent(s) { return /<[a-z][\s\S]*>/i.test(String(s || '')) }
+
+// Convierte un color de CSS ("#rrggbb" o "rgb(r,g,b)", que es lo que entrega el navegador
+// al usar el selector de color del mini-editor) a un arreglo [r,g,b] para jsPDF.
+function colorToRgb(c) {
+  if (!c) return null
+  const s = String(c).trim()
+  if (s.startsWith('#')) {
+    let hex = s.slice(1)
+    if (hex.length === 3) hex = hex.split('').map(ch => ch + ch).join('')
+    const num = parseInt(hex, 16)
+    if (Number.isNaN(num)) return null
+    return [(num >> 16) & 255, (num >> 8) & 255, num & 255]
+  }
+  const m = s.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i)
+  if (m) return [Number(m[1]), Number(m[2]), Number(m[3])]
+  return null
+}
+
+// Recorre el HTML guardado y lo convierte en "bloques" (párrafos), cada uno con una lista de
+// fragmentos {text, bold, color} — así se puede dibujar en el PDF respetando exactamente la
+// negrita/color que se le puso a cada palabra desde el mini-editor.
+function parseHtmlToBlocks(html) {
+  const container = document.createElement('div')
+  container.innerHTML = html
+  const blocks = []
+  let current = []
+  function flush() { if (current.length) { blocks.push(current); current = [] } }
+  function walk(node, bold, color) {
+    if (node.nodeType === 3) {
+      if (node.textContent) current.push({ text: node.textContent, bold, color })
+      return
+    }
+    if (node.nodeType !== 1) return
+    const tag = node.tagName
+    if (tag === 'BR') { flush(); return }
+    const isBlock = tag === 'DIV' || tag === 'P'
+    if (isBlock) flush()
+    let nb = bold
+    let nc = color
+    if (tag === 'B' || tag === 'STRONG') nb = true
+    if (node.style && node.style.fontWeight && (node.style.fontWeight === 'bold' || Number(node.style.fontWeight) >= 600)) nb = true
+    if (node.style && node.style.color) nc = colorToRgb(node.style.color) || nc
+    if (tag === 'FONT' && node.getAttribute('color')) nc = colorToRgb(node.getAttribute('color')) || nc
+    Array.from(node.childNodes).forEach(child => walk(child, nb, nc))
+    if (isBlock) flush()
+  }
+  Array.from(container.childNodes).forEach(n => walk(n, false, null))
+  flush()
+  return blocks
+}
+
+// Dibuja los bloques de "condiciones comerciales" en el PDF, con ajuste de línea (word-wrap)
+// palabra por palabra, respetando la negrita/color de cada una. Los bloques que están
+// completos en negrita (los títulos de sección) se pintan en azul navy con espacio extra
+// arriba, igual que el formato original.
+function renderConditionBlocks(doc, blocks, marginL, contentW, startY, F, NAVY) {
+  let cy = startY
+  const lineH = 11
+  blocks.forEach(block => {
+    const words = []
+    block.forEach(run => {
+      String(run.text).split(/(\s+)/).forEach(part => {
+        if (!part || /^\s+$/.test(part)) return
+        words.push({ text: part, bold: run.bold, color: run.color })
+      })
+    })
+    if (!words.length) { cy += 4; return }
+    const allBold = words.every(w => w.bold)
+    if (allBold) cy += 6
+    const fontSize = allBold ? 9 : 8.5
+    doc.setFontSize(fontSize)
+    const spaceW = doc.getTextWidth(' ')
+    let line = []
+    let lineWidth = 0
+    function flushLine() {
+      if (!line.length) return
+      let x = marginL
+      line.forEach(w => {
+        doc.setFont(F.slab, w.bold ? 'bold' : 'normal')
+        doc.setFontSize(fontSize)
+        doc.setTextColor(...(w.color || (allBold ? NAVY : [0, 0, 0])))
+        doc.text(w.text, x, cy)
+        x += doc.getTextWidth(w.text) + spaceW
+      })
+      cy += lineH
+      line = []; lineWidth = 0
+    }
+    words.forEach(w => {
+      doc.setFont(F.slab, w.bold ? 'bold' : 'normal')
+      doc.setFontSize(fontSize)
+      const wWidth = doc.getTextWidth(w.text)
+      const extra = line.length ? spaceW : 0
+      if (line.length && lineWidth + extra + wWidth > contentW) flushLine()
+      line.push(w)
+      lineWidth += (line.length > 1 ? spaceW : 0) + wWidth
+    })
+    flushLine()
+    cy += 4
+  })
+  return cy
+}
+
 async function generarPdfCotizacion(q, nombreArchivo) {
   const logo = await getLogoInfo()
   const doc = new jsPDF({ unit: 'pt', format: 'letter' })
@@ -1253,21 +1379,26 @@ async function generarPdfCotizacion(q, nombreArchivo) {
   banco.forEach((line, i) => doc.text(line, marginL, by + i * 12.5))
 
   let cy = by + banco.length * 12.5 + 20
-  // Un solo texto editable: las líneas que terminan en ":" se pintan como título en negrita
-  // (con espacio extra arriba), el resto como viñeta normal — igual que el formato original.
-  String(q.condiciones || '').split('\n').forEach(raw => {
-    const l = raw.trim()
-    if (!l) return
-    if (l.endsWith(':')) {
-      cy += 6
-      doc.setFont(F.slab, 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
-      doc.text(l, marginL, cy); cy += 13
-    } else {
-      doc.setFont(F.slab, 'normal'); doc.setFontSize(8.5); doc.setTextColor(0, 0, 0)
-      const wrapped = doc.splitTextToSize('- ' + l, contentW)
-      doc.text(wrapped, marginL, cy); cy += wrapped.length * 11 + 4
-    }
-  })
+  if (isHtmlContent(q.condiciones)) {
+    // Texto enriquecido guardado desde el mini-editor (negrita/color) — se respeta tal cual.
+    cy = renderConditionBlocks(doc, parseHtmlToBlocks(q.condiciones), marginL, contentW, cy, F, NAVY)
+  } else {
+    // Cotizaciones guardadas antes de este cambio (texto plano): se mantiene el formato anterior,
+    // donde las líneas que terminan en ":" se pintan como título en negrita.
+    String(q.condiciones || '').split('\n').forEach(raw => {
+      const l = raw.trim()
+      if (!l) return
+      if (l.endsWith(':')) {
+        cy += 6
+        doc.setFont(F.slab, 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
+        doc.text(l, marginL, cy); cy += 13
+      } else {
+        doc.setFont(F.slab, 'normal'); doc.setFontSize(8.5); doc.setTextColor(0, 0, 0)
+        const wrapped = doc.splitTextToSize('- ' + l, contentW)
+        doc.text(wrapped, marginL, cy); cy += wrapped.length * 11 + 4
+      }
+    })
+  }
 
   const nombre = (nombreArchivo && nombreArchivo.trim()) || nombreArchivoDefault(q.numero, q.cliente)
   doc.save(`${nombre.replace(/\.pdf$/i, '')}.pdf`)
@@ -1304,6 +1435,36 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
   const [aplicaDescuento, setAplicaDescuento] = useState(false)
   const [descuentoPct, setDescuentoPct] = useState('')
   const [condiciones, setCondiciones] = useState(CONDICIONES_DEFAULT)
+  const condicionesRef = useRef(null)
+  const savedRangeRef = useRef(null)
+  function saveSelection() {
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount > 0 && condicionesRef.current && condicionesRef.current.contains(sel.anchorNode)) {
+      savedRangeRef.current = sel.getRangeAt(0).cloneRange()
+    }
+  }
+  function restoreSelection() {
+    const sel = window.getSelection()
+    if (sel && savedRangeRef.current) { sel.removeAllRanges(); sel.addRange(savedRangeRef.current) }
+  }
+  function execRte(cmd, value) {
+    restoreSelection()
+    if (condicionesRef.current) condicionesRef.current.focus()
+    document.execCommand(cmd, false, value)
+    if (condicionesRef.current) setCondiciones(condicionesRef.current.innerHTML)
+  }
+  function setCondicionesColor(color) {
+    restoreSelection()
+    if (condicionesRef.current) condicionesRef.current.focus()
+    document.execCommand('foreColor', false, color)
+    if (condicionesRef.current) setCondiciones(condicionesRef.current.innerHTML)
+  }
+  useEffect(() => {
+    if (condicionesRef.current && condicionesRef.current.innerHTML !== condiciones) {
+      condicionesRef.current.innerHTML = condiciones
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [guardando, setGuardando] = useState(false)
 
   // Selección múltiple para borrar varias cotizaciones guardadas de una vez.
@@ -1367,6 +1528,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
     setCliente(''); setClienteRut(''); setClienteDireccion(''); setClienteCorreo('')
     setFecha(today); setItems([nuevoItem()])
     setAplicaDescuento(false); setDescuentoPct(''); setCondiciones(CONDICIONES_DEFAULT)
+    if (condicionesRef.current) condicionesRef.current.innerHTML = CONDICIONES_DEFAULT
     setNumeroEditado(false); setArchivoEditado(false)
     setIncluirTraslado(true); setTrasladoCantidad(1); setTrasladoValorEditado(false); setTrasladoTamano('13'); setTrasladoDescEditada(false)
   }
@@ -1528,8 +1690,24 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
         </div>
 
         <div className="f-group" style={{marginTop:16}}><label>Condiciones comerciales</label>
-          <div className="section-sub" style={{margin:'-2px 0 8px'}}>Las líneas que terminan en " : " se muestran como título en negrita en el PDF (ej: "Equipo y Operador:"); el resto se muestra como viñeta.</div>
-          <textarea value={condiciones} onChange={e => setCondiciones(e.target.value)} rows={14} style={{width:'100%',padding:'9px 10px',border:'1px solid var(--border)',borderRadius:7,fontSize:'13.5px',fontFamily:'inherit',resize:'vertical'}} />
+          <div className="section-sub" style={{margin:'-2px 0 8px'}}>Selecciona un texto y usa los botones para ponerlo en negrita o cambiarle el color, como en Word. Los bloques que quedan completos en negrita se muestran como título azul en el PDF.</div>
+          <div className="rte-toolbar">
+            <button type="button" className="rte-btn" title="Negrita" onMouseDown={e => e.preventDefault()} onClick={() => execRte('bold')}><b>N</b></button>
+            <label className="rte-btn rte-color-btn" title="Color de letra" onMouseDown={saveSelection}>
+              A
+              <input type="color" defaultValue="#000000" onChange={e => setCondicionesColor(e.target.value)} />
+            </label>
+            <button type="button" className="rte-btn" title="Quitar formato" onMouseDown={e => e.preventDefault()} onClick={() => execRte('removeFormat')}>Limpiar</button>
+          </div>
+          <div
+            ref={condicionesRef}
+            className="rte-editor"
+            contentEditable
+            suppressContentEditableWarning
+            onInput={e => setCondiciones(e.currentTarget.innerHTML)}
+            onMouseUp={saveSelection}
+            onKeyUp={saveSelection}
+          />
         </div>
 
         <div className="result-box" style={{marginTop:16}}>
