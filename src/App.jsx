@@ -33,12 +33,9 @@ function overlayClick(e, closeFn) {
 // para escribir cualquier cosa, esto solo ayuda a elegir rápido los más comunes.
 const TIPOS_TRABAJO = [
   'Poda de árboles',
-  'Mantención de alumbrado público',
-  'Instalación eléctrica',
+  'Trabajo eléctrico',
+  'Telecomunicaciones',
   'Trabajo en altura / fachada',
-  'Montaje de estructuras',
-  'Rescate o emergencia',
-  'Otro',
 ]
 
 // Iconos de navegación en SVG (más confiables entre navegadores que los emoji/símbolos unicode)
