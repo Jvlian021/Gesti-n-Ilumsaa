@@ -454,7 +454,7 @@ function Camiones({ camiones, isAdmin, toast, reload, confirm }) {
     }
     const { error } = await supabase.from('camiones').update(patch).eq('id', id)
     setSavingId(null)
-    if (error) { toast('No se pudo guardar (revisa tus permisos)'); return }
+    if (error) { console.error('camiones.update', error); toast('No se pudo guardar: ' + (error.message || error.code || 'revisa tus permisos')); return }
     toast('Camión actualizado'); reload()
   }
 
@@ -463,7 +463,7 @@ function Camiones({ camiones, isAdmin, toast, reload, confirm }) {
     const { error } = await supabase.from('camiones').insert({
       nombre: form.nombre, patente: form.patente, tamano: Number(form.tamano), aislado: form.aislado,
     })
-    if (error) { toast('No se pudo guardar el camión'); return }
+    if (error) { console.error('camiones.insert', error); toast('No se pudo guardar el camión: ' + (error.message || error.code || '')); return }
     setShowModal(false); setForm({ nombre: '', patente: '', tamano: '13', aislado: 'No' })
     reload(); toast('Camión agregado')
   }
@@ -471,7 +471,7 @@ function Camiones({ camiones, isAdmin, toast, reload, confirm }) {
   async function deleteTruck(c) {
     if (!(await confirm(`¿Eliminar "${c.nombre}"? Esto no se puede deshacer. Sus reservas y cotizaciones pasadas quedarán sin camión asignado.`))) return
     const { error } = await supabase.from('camiones').delete().eq('id', c.id)
-    if (error) { toast('No se pudo eliminar el camión'); return }
+    if (error) { console.error('camiones.delete', error); toast('No se pudo eliminar el camión: ' + (error.message || error.code || '')); return }
     toast('Camión eliminado'); reload()
   }
 
