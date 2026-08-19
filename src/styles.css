@@ -96,6 +96,8 @@ background:radial-gradient(circle at 15% 20%, rgba(233,106,12,.14), transparent 
 .week-nav button{border:1px solid var(--border);background:#fff;border-radius:6px;width:26px;height:26px;font-size:13px;color:var(--mute);}
 .week-nav .range{font-weight:700;font-size:13px;min-width:150px;text-align:center;}
 .week-nav .today-btn{border:1px solid var(--border);background:#fff;border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;color:var(--text);}
+.week-nav button:disabled{opacity:.35;cursor:not-allowed;}
+.today-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--orange);margin-left:5px;vertical-align:middle;}
 
 .cal-wrap{overflow-x:auto;}
 table.calendar{border-collapse:separate;border-spacing:0;width:100%;min-width:1060px;}
@@ -131,6 +133,9 @@ table.calendar th:first-child{ z-index:3; }
 
 .svc-item{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);}
 .svc-item:last-child{border-bottom:none;}
+.svc-item.svc-clickable{cursor:pointer;}
+.svc-item.svc-clickable:hover{background:var(--gray-bg);border-radius:8px;}
+.svc-detail{margin-top:5px;padding-top:5px;border-top:1px dashed var(--border);display:flex;flex-direction:column;gap:2px;}
 .svc-date{width:42px;flex-shrink:0;text-align:center;background:var(--gray-bg);border-radius:7px;padding:5px 2px;}
 .svc-date .mo{font-size:9px;font-weight:700;color:var(--mute);text-transform:uppercase;}
 .svc-date .dy{font-size:15px;font-weight:800;font-family:'IBM Plex Mono',monospace;}
