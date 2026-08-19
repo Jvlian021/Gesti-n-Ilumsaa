@@ -16,11 +16,11 @@ const Mark = () => (
 // para escribir cualquier cosa, esto solo ayuda a elegir rápido los más comunes.
 const TIPOS_TRABAJO = [
   'Poda de árboles',
-  'Mantención de alumbrado público',
+  'Alumbrado público',
   'Instalación eléctrica',
   'Trabajo en altura / fachada',
   'Montaje de estructuras',
-  'Rescate o emergencia',
+  'Telecomunicaciones',
   'Otro',
 ]
 
@@ -215,9 +215,8 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
 
   const [qSize, setQSize] = useState('13')
   const [qDate, setQDate] = useState(today)
-  const [qComuna, setQComuna] = useState(tarifasComunas[0]?.comuna || '')
+  const [qComuna, setQComuna] = useState('')
   const [qResult, setQResult] = useState(null)
-  useEffect(() => { if (!qComuna && tarifasComunas[0]) setQComuna(tarifasComunas[0].comuna) }, [tarifasComunas]) // eslint-disable-line
 
   function runSearch() {
     // Muestra TODOS los camiones disponibles de ese tamaño ese día, no solo el primero.
@@ -663,19 +662,20 @@ function Clientes({ clientes, toast, reload }) {
             <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder={`Buscar cliente… (${rows.length})`} />
           </div>
         </div>
-        <table className="data">
+        <div style={{overflowX:'auto'}}>
+        <table className="data" style={{minWidth:900}}>
           <thead><tr><th>Empresa</th><th>Nombre cliente</th><th>RUT</th><th>Dirección</th><th>Correo</th><th>Contacto</th><th></th></tr></thead>
           <tbody>
             {!visibles.length && <tr><td colSpan={7} style={{textAlign:'center',color:'var(--mute2)',padding:24}}>{rows.length ? 'No hay clientes que coincidan.' : 'Aún no hay clientes cargados. Se agregan solos al guardar una cotización o una reserva, o puedes sumarlos aquí abajo.'}</td></tr>}
             {visibles.map(c => (
               <tr key={c.id}>
-                <td><input type="text" value={c.empresa || ''} onChange={e => editField(c.id, 'empresa', e.target.value)} placeholder="Empresa" style={{width:150}} /></td>
-                <td><input type="text" value={c.nombre} onChange={e => editField(c.id, 'nombre', e.target.value)} style={{width:150}} /></td>
-                <td><input type="text" value={c.rut || ''} onChange={e => editField(c.id, 'rut', formatRut(e.target.value))} style={{width:110}} /></td>
-                <td><input type="text" value={c.direccion || ''} onChange={e => editField(c.id, 'direccion', e.target.value)} style={{width:170}} /></td>
-                <td><input type="text" value={c.correo || ''} onChange={e => editField(c.id, 'correo', e.target.value)} style={{width:170}} /></td>
-                <td><input type="text" value={c.telefono || ''} onChange={e => editField(c.id, 'telefono', e.target.value)} placeholder="Nombre y/o teléfono" style={{width:150}} /></td>
-                <td style={{display:'flex',gap:6}}>
+                <td><input type="text" value={c.empresa || ''} onChange={e => editField(c.id, 'empresa', e.target.value)} placeholder="Empresa" style={{width:130}} /></td>
+                <td><input type="text" value={c.nombre} onChange={e => editField(c.id, 'nombre', e.target.value)} style={{width:130}} /></td>
+                <td><input type="text" value={c.rut || ''} onChange={e => editField(c.id, 'rut', formatRut(e.target.value))} style={{width:100}} /></td>
+                <td><input type="text" value={c.direccion || ''} onChange={e => editField(c.id, 'direccion', e.target.value)} style={{width:150}} /></td>
+                <td><input type="text" value={c.correo || ''} onChange={e => editField(c.id, 'correo', e.target.value)} style={{width:150}} /></td>
+                <td><input type="text" value={c.telefono || ''} onChange={e => editField(c.id, 'telefono', e.target.value)} placeholder="Nombre y/o teléfono" style={{width:130}} /></td>
+                <td style={{display:'flex',gap:6,whiteSpace:'nowrap'}}>
                   <button className="btn-dark btn-sm" disabled={savingId===c.id} onClick={() => saveRow(c.id)}>{savingId===c.id ? 'Guardando…' : 'Guardar'}</button>
                   <button className="btn-danger btn-sm" onClick={() => deleteCliente(c)}>Eliminar</button>
                 </td>
@@ -683,6 +683,7 @@ function Clientes({ clientes, toast, reload }) {
             ))}
           </tbody>
         </table>
+        </div>
         <div style={{padding:16,borderTop:'1px solid var(--border)'}}>
           <div className="section-sub" style={{margin:'0 0 10px'}}>Agregar un cliente nuevo</div>
           <div className="quick-row" style={{gridTemplateColumns:'1.1fr 1.1fr 1fr 1.3fr 1.3fr 1.1fr auto'}}>
@@ -768,7 +769,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
         fecha: editReserva.fecha || today,
         hasta: editReserva.fecha || today,
         hora: editReserva.hora ? editReserva.hora.slice(0,5) : '',
-        comuna: editReserva.comuna || tarifasComunas[0]?.comuna || '',
+        comuna: editReserva.comuna || '',
         direccion: editReserva.direccion || '',
         estado: editReserva.estado || 'Reservado',
         conductorId: editReserva.conductor_id || '',
@@ -781,7 +782,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
         fecha: initialFecha || today,
         hasta: initialFecha || today,
         hora: '', empresa: '', cliente: '', contacto: '', tipoTrabajo: '', direccion: '', conductorId: '', descripcion: '', estado: 'Reservado',
-        comuna: f.comuna || tarifasComunas[0]?.comuna || '',
+        comuna: '',
       }))
     }
   }, [show, initialCamionId, initialFecha, editReserva]) // eslint-disable-line
@@ -1540,11 +1541,10 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
   // solo desde la tabla de Tarifas según tamaño de camión y comuna, y se puede editar o desmarcar.
   const [incluirTraslado, setIncluirTraslado] = useState(true)
   const [trasladoTamano, setTrasladoTamano] = useState('13')
-  const [trasladoComuna, setTrasladoComuna] = useState(tarifasComunas[0]?.comuna || '')
+  const [trasladoComuna, setTrasladoComuna] = useState('')
   const [trasladoCantidad, setTrasladoCantidad] = useState(1)
   const [trasladoValor, setTrasladoValor] = useState(0)
   const [trasladoValorEditado, setTrasladoValorEditado] = useState(false)
-  useEffect(() => { if (!trasladoComuna && tarifasComunas[0]) setTrasladoComuna(tarifasComunas[0].comuna) }, [tarifasComunas]) // eslint-disable-line
   const trasladoValorAuto = (tarifasComunas.find(c => c.comuna === trasladoComuna) || {})['p' + trasladoTamano] || 0
   useEffect(() => { if (!trasladoValorEditado) setTrasladoValor(trasladoValorAuto) }, [trasladoValorAuto, trasladoValorEditado])
   function onChangeTrasladoValor(v) { setTrasladoValor(parseMoneyInput(v)); setTrasladoValorEditado(true) }
