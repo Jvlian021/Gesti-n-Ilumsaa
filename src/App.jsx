@@ -15,6 +15,10 @@ const Mark = () => (
 // Evita que el modal se cierre y borre lo escrito cuando el usuario hace click y arrastra
 // (por ejemplo, seleccionando texto) desde dentro del modal hacia afuera: solo cierra si el
 // mousedown Y el click ocurrieron ambos directamente sobre el fondo, no sobre el contenido.
+// Medianoche de hoy, para usar como inicio de la ventana visible del calendario (así el día
+// de hoy queda como primera columna, sin tener que desplazarse hacia los lados para verlo).
+function todayMidnight() { const d = new Date(); d.setHours(0, 0, 0, 0); return d }
+
 function overlayMouseDown(e) { if (e.target === e.currentTarget) e.currentTarget.dataset.downBg = '1' }
 function overlayClick(e, closeFn) {
   const wasDownOnBg = e.currentTarget.dataset.downBg === '1'
@@ -50,7 +54,7 @@ export default function App() {
   const [perfil, setPerfil] = useState(null)
   const [view, setView] = useState('dashboard')
   const [toastMsg, setToastMsg] = useState('')
-  const [calWeekStart, setCalWeekStart] = useState(startOfWorkWeek(new Date()))
+  const [calWeekStart, setCalWeekStart] = useState(todayMidnight())
   const [reservaModal, setReservaModal] = useState({ show: false, camionId: '', fecha: '', editReserva: null })
   const [confirmState, setConfirmState] = useState(null)
 
@@ -275,7 +279,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
 
   const upcoming = reservas.filter(r => r.fecha >= today).sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 5)
   const alerts = camiones.filter(c => c.estado_general === 'Mantención' || c.estado_general === 'Fuera de Servicio')
-  const thisWeekStart = startOfWorkWeek(new Date())
+  const thisWeekStart = todayMidnight()
   const [expandedSvc, setExpandedSvc] = useState(null)
 
   return (
@@ -304,7 +308,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
                 <button onClick={() => setCalWeekStart(addDays(calWeekStart, -7))} disabled={calWeekStart <= thisWeekStart} title={calWeekStart <= thisWeekStart ? 'No se puede ver semanas anteriores a la actual' : ''}>‹</button>
                 <span className="range">{days[0].getDate()} – {days[6].getDate()} de {MESES[days[6].getMonth()].charAt(0) + MESES[days[6].getMonth()].slice(1).toLowerCase()}, {days[6].getFullYear()}</span>
                 <button onClick={() => setCalWeekStart(addDays(calWeekStart, 7))}>›</button>
-                <button className="today-btn" onClick={() => setCalWeekStart(startOfWorkWeek(new Date()))}>Hoy</button>
+                <button className="today-btn" onClick={() => setCalWeekStart(todayMidnight())}>Hoy</button>
               </div>
             </div>
             <div className="cal-wrap">
@@ -864,12 +868,13 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
   const esMantencion = form.estado === 'Mantención'
 
   function onChangeCliente(valor) {
+    // La comuna/dirección de la reserva es el lugar de trabajo, no la dirección de la empresa,
+    // así que al autocompletar solo se rellenan empresa y contacto (nunca dirección).
     const match = (clientes || []).find(c => c.nombre.trim().toLowerCase() === valor.trim().toLowerCase())
     setForm(f => ({
       ...f,
       cliente: valor,
       empresa: match && !f.empresa ? (match.empresa || '') : f.empresa,
-      direccion: match && !f.direccion ? (match.direccion || '') : f.direccion,
       contacto: match && !f.contacto ? (match.telefono || '') : f.contacto,
     }))
   }
@@ -880,7 +885,6 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
       ...f,
       empresa: valor,
       cliente: match && !f.cliente ? (match.nombre || '') : f.cliente,
-      direccion: match && !f.direccion ? (match.direccion || '') : f.direccion,
       contacto: match && !f.contacto ? (match.telefono || '') : f.contacto,
     }))
   }
@@ -901,13 +905,12 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
         const cambios = {}
         if (!existente.empresa && empresaTrim) cambios.empresa = empresaTrim
         if (!existente.telefono && form.contacto) cambios.telefono = form.contacto
-        if (!existente.direccion && form.direccion) cambios.direccion = form.direccion
         if (Object.keys(cambios).length) await supabase.from('clientes').update(cambios).eq('id', existente.id)
       } else {
         const etiqueta = nombreTrim || empresaTrim
         if (await confirm(`"${etiqueta}" es un cliente nuevo. ¿Quieres guardarlo en la lista de clientes para completar sus datos automáticamente la próxima vez?`)) {
           await supabase.from('clientes').insert({
-            empresa: empresaTrim || null, nombre: nombreTrim || empresaTrim, telefono: form.contacto || null, direccion: form.direccion || null,
+            empresa: empresaTrim || null, nombre: nombreTrim || empresaTrim, telefono: form.contacto || null,
           })
         }
       }
