@@ -16,11 +16,11 @@ const Mark = () => (
 // para escribir cualquier cosa, esto solo ayuda a elegir rápido los más comunes.
 const TIPOS_TRABAJO = [
   'Poda de árboles',
-  'Alumbrado público',
+  'Mantención de alumbrado público',
   'Instalación eléctrica',
   'Trabajo en altura / fachada',
   'Montaje de estructuras',
-  'Telecomunicaciones',
+  'Rescate o emergencia',
   'Otro',
 ]
 
@@ -42,6 +42,7 @@ export default function App() {
   const [toastMsg, setToastMsg] = useState('')
   const [calWeekStart, setCalWeekStart] = useState(startOfWorkWeek(new Date()))
   const [reservaModal, setReservaModal] = useState({ show: false, camionId: '', fecha: '', editReserva: null })
+  const [confirmState, setConfirmState] = useState(null)
 
   const [camiones, setCamiones] = useState([])
   const [reservas, setReservas] = useState([])
@@ -100,6 +101,15 @@ export default function App() {
   }, [perfil, loadAll])
 
   function toast(msg) { setToastMsg(msg); setTimeout(() => setToastMsg(''), 2400) }
+  // Reemplaza a window.confirm() por un cuadro propio, con el mismo estilo que el resto de la
+  // app — se usa igual que window.confirm pero es async: `if (!(await confirmDialog('¿Seguro?'))) return`
+  function confirmDialog(message, opts = {}) {
+    return new Promise(resolve => setConfirmState({ message, resolve, ...opts }))
+  }
+  function resolveConfirm(result) {
+    if (confirmState) confirmState.resolve(result)
+    setConfirmState(null)
+  }
   function openReserva(camionId, fecha) { setReservaModal({ show: true, camionId, fecha, editReserva: null }) }
   function openReservaEdit(reserva) { setReservaModal({ show: true, camionId: reserva.camion_id, fecha: reserva.fecha, editReserva: reserva }) }
   function closeReserva() { setReservaModal(m => ({ ...m, show: false })) }
@@ -123,37 +133,64 @@ export default function App() {
           />
         )}
         {view === 'camiones' && (
-          <Camiones camiones={camiones} isAdmin={isAdmin} toast={toast} reload={loadAll} />
+          <Camiones camiones={camiones} isAdmin={isAdmin} toast={toast} reload={loadAll} confirm={confirmDialog} />
         )}
         {view === 'reservas' && (
           <Reservas
             camiones={camiones} reservas={reservas} conductores={conductores} tarifasComunas={tarifasComunas}
             perfil={perfil} toast={toast} reload={loadAll} openReserva={openReserva} openReservaEdit={openReservaEdit}
+            confirm={confirmDialog}
           />
         )}
         {view === 'conductores' && (
-          <Conductores conductores={conductores} isAdmin={isAdmin} toast={toast} reload={loadAll} />
+          <Conductores conductores={conductores} isAdmin={isAdmin} toast={toast} reload={loadAll} confirm={confirmDialog} />
         )}
         {view === 'clientes' && (
-          <Clientes clientes={clientes} toast={toast} reload={loadAll} />
+          <Clientes clientes={clientes} toast={toast} reload={loadAll} confirm={confirmDialog} />
         )}
         {view === 'tarifas' && (
           <Tarifas
             tarifaArriendo={tarifaArriendo} tarifasComunas={tarifasComunas}
-            isAdmin={isAdmin} toast={toast} reload={loadAll}
+            isAdmin={isAdmin} toast={toast} reload={loadAll} confirm={confirmDialog}
           />
         )}
         {view === 'cotizaciones' && (
-          <Cotizaciones cotizaciones={cotizaciones} tarifasComunas={tarifasComunas} tarifaArriendo={tarifaArriendo} clientes={clientes} perfil={perfil} toast={toast} reload={loadAll} />
+          <Cotizaciones cotizaciones={cotizaciones} tarifasComunas={tarifasComunas} tarifaArriendo={tarifaArriendo} clientes={clientes} perfil={perfil} toast={toast} reload={loadAll} confirm={confirmDialog} />
         )}
       </main>
       <ReservaModal
         show={reservaModal.show} onClose={closeReserva}
         camiones={camiones} tarifasComunas={tarifasComunas} conductores={conductores} clientes={clientes}
-        perfil={perfil} toast={toast} reload={loadAll}
+        perfil={perfil} toast={toast} reload={loadAll} confirm={confirmDialog}
         initialCamionId={reservaModal.camionId} initialFecha={reservaModal.fecha} editReserva={reservaModal.editReserva}
       />
+      <ConfirmModal state={confirmState} onResult={resolveConfirm} />
       <div className={`toast ${toastMsg ? 'show' : ''}`}>{toastMsg}</div>
+    </div>
+  )
+}
+
+// Reemplazo propio de window.confirm() / window.alert(), con el mismo estilo visual que el
+// resto de los cuadros de la app (en vez del cuadro genérico y feo del navegador).
+function ConfirmModal({ state, onResult }) {
+  useEffect(() => {
+    if (!state) return
+    function onKey(e) { if (e.key === 'Escape') onResult(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [state]) // eslint-disable-line
+
+  if (!state) return null
+  return (
+    <div className="modal-bg show" onClick={() => onResult(false)}>
+      <div className="modal confirm-modal" onClick={e => e.stopPropagation()}>
+        <div className="confirm-icon">{state.danger === false ? 'i' : '!'}</div>
+        <div className="confirm-msg">{state.message}</div>
+        <div className="modal-actions">
+          <button className="btn-outline" onClick={() => onResult(false)}>{state.cancelLabel || 'Cancelar'}</button>
+          <button className={state.danger === false ? 'btn-orange' : 'btn-danger'} onClick={() => onResult(true)}>{state.okLabel || 'Aceptar'}</button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -390,7 +427,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
 }
 
 // ============================================================
-function Camiones({ camiones, isAdmin, toast, reload }) {
+function Camiones({ camiones, isAdmin, toast, reload, confirm }) {
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({ nombre: '', patente: '', tamano: '13', aislado: 'No' })
   const [rows, setRows] = useState(camiones)
@@ -432,7 +469,7 @@ function Camiones({ camiones, isAdmin, toast, reload }) {
   }
 
   async function deleteTruck(c) {
-    if (!window.confirm(`¿Eliminar "${c.nombre}"? Esto no se puede deshacer. Sus reservas y cotizaciones pasadas quedarán sin camión asignado.`)) return
+    if (!(await confirm(`¿Eliminar "${c.nombre}"? Esto no se puede deshacer. Sus reservas y cotizaciones pasadas quedarán sin camión asignado.`))) return
     const { error } = await supabase.from('camiones').delete().eq('id', c.id)
     if (error) { toast('No se pudo eliminar el camión'); return }
     toast('Camión eliminado'); reload()
@@ -523,7 +560,7 @@ function Camiones({ camiones, isAdmin, toast, reload }) {
 }
 
 // ============================================================
-function Conductores({ conductores, isAdmin, toast, reload }) {
+function Conductores({ conductores, isAdmin, toast, reload, confirm }) {
   const [rows, setRows] = useState(conductores)
   const [savingId, setSavingId] = useState(null)
   const [nuevo, setNuevo] = useState({ nombre: '', telefono: '' })
@@ -552,7 +589,7 @@ function Conductores({ conductores, isAdmin, toast, reload }) {
   }
 
   async function deleteConductor(c) {
-    if (!window.confirm(`¿Eliminar a "${c.nombre}" de la lista de conductores? Las reservas que tenía asignadas quedarán sin conductor.`)) return
+    if (!(await confirm(`¿Eliminar a "${c.nombre}" de la lista de conductores? Las reservas que tenía asignadas quedarán sin conductor.`))) return
     const { error } = await supabase.from('conductores').delete().eq('id', c.id)
     if (error) { toast('No se pudo eliminar'); return }
     toast('Conductor eliminado'); reload()
@@ -605,7 +642,7 @@ function Conductores({ conductores, isAdmin, toast, reload }) {
 // Base de clientes: cualquiera del equipo puede agregar/editar (no solo la administradora),
 // porque son quienes cotizan día a día y necesitan sumar clientes nuevos sobre la marcha.
 // Además, cada vez que se guarda una cotización, el cliente queda registrado aquí solo.
-function Clientes({ clientes, toast, reload }) {
+function Clientes({ clientes, toast, reload, confirm }) {
   const [rows, setRows] = useState(clientes)
   const [savingId, setSavingId] = useState(null)
   const [busca, setBusca] = useState('')
@@ -641,7 +678,7 @@ function Clientes({ clientes, toast, reload }) {
   }
 
   async function deleteCliente(c) {
-    if (!window.confirm(`¿Eliminar a "${c.nombre}" de la lista de clientes?`)) return
+    if (!(await confirm(`¿Eliminar a "${c.nombre}" de la lista de clientes?`))) return
     const { error } = await supabase.from('clientes').delete().eq('id', c.id)
     if (error) { toast('No se pudo eliminar'); return }
     toast('Cliente eliminado'); reload()
@@ -702,12 +739,12 @@ function Clientes({ clientes, toast, reload }) {
 }
 
 // ============================================================
-function Reservas({ camiones, reservas, conductores, tarifasComunas, perfil, toast, reload, openReserva, openReservaEdit }) {
+function Reservas({ camiones, reservas, conductores, tarifasComunas, perfil, toast, reload, openReserva, openReservaEdit, confirm }) {
   const today = isoDate(new Date())
   const sorted = [...reservas].sort((a, b) => b.fecha.localeCompare(a.fecha))
 
   async function quickDelete(r) {
-    if (!window.confirm(`¿Eliminar la reserva de "${r.cliente}" (${new Date(r.fecha+'T00:00:00').toLocaleDateString('es-CL')})?`)) return
+    if (!(await confirm(`¿Eliminar la reserva de "${r.cliente}" (${new Date(r.fecha+'T00:00:00').toLocaleDateString('es-CL')})?`))) return
     const { error } = await supabase.from('reservas').delete().eq('id', r.id)
     if (error) { toast('No se pudo eliminar la reserva'); return }
     toast('Reserva eliminada'); reload()
@@ -752,7 +789,7 @@ function Reservas({ camiones, reservas, conductores, tarifasComunas, perfil, toa
 }
 
 // ============================================================
-function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, clientes, perfil, toast, reload, initialCamionId, initialFecha, editReserva }) {
+function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, clientes, perfil, toast, reload, confirm, initialCamionId, initialFecha, editReserva }) {
   const today = isoDate(new Date())
   const [form, setForm] = useState({ camionId: '', empresa: '', cliente: '', contacto: '', tipoTrabajo: '', fecha: today, hasta: '', hora: '', comuna: '', direccion: '', estado: 'Reservado', conductorId: '', descripcion: '' })
   const isEdit = !!editReserva
@@ -859,7 +896,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
 
   async function remove() {
     if (!isEdit) return
-    if (!window.confirm(`¿Eliminar la reserva de "${editReserva.cliente}"?`)) return
+    if (!(await confirm(`¿Eliminar la reserva de "${editReserva.cliente}"?`))) return
     const { error } = await supabase.from('reservas').delete().eq('id', editReserva.id)
     if (error) { toast('No se pudo eliminar la reserva'); return }
     reload(); toast('Reserva eliminada'); onClose()
@@ -945,7 +982,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
 }
 
 // ============================================================
-function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
+function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload, confirm }) {
   const [arriendo, setArriendo] = useState(tarifaArriendo)
   const [comunas, setComunas] = useState(tarifasComunas)
   const [filtro, setFiltro] = useState('')
@@ -975,7 +1012,7 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
   }
 
   async function deleteComuna(c) {
-    if (!window.confirm(`¿Eliminar "${c.comuna}" de la lista de tarifas?`)) return
+    if (!(await confirm(`¿Eliminar "${c.comuna}" de la lista de tarifas?`))) return
     const { error } = await supabase.from('tarifas_comunas').delete().eq('id', c.id)
     if (error) { toast('No se pudo eliminar'); return }
     setFiltro('')
@@ -1460,7 +1497,7 @@ async function generarPdfCotizacion(q, nombreArchivo) {
   doc.save(`${nombre.replace(/\.pdf$/i, '')}.pdf`)
 }
 
-function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, perfil, toast, reload }) {
+function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, perfil, toast, reload, confirm }) {
   const today = isoDate(new Date())
   const nextNumero = cotizaciones.reduce((max, c) => Math.max(max, c.numero || 0), 0) + 1
 
@@ -1472,18 +1509,35 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
   function onChangeNumero(v) { setNumero(v.replace(/[^\d]/g, '')); setNumeroEditado(true) }
 
   const [cliente, setCliente] = useState('')
+  const [clienteNombre, setClienteNombre] = useState('')
+  const [clienteContacto, setClienteContacto] = useState('')
   const [clienteRut, setClienteRut] = useState('')
   const [clienteDireccion, setClienteDireccion] = useState('')
   const [clienteCorreo, setClienteCorreo] = useState('')
   // Si el nombre escrito coincide con un cliente ya cargado (elegido de la lista de sugerencias),
-  // se completan RUT/dirección/correo solos — pero quedan editables igual que siempre.
+  // se completan RUT/dirección/correo solos — pero quedan editables igual que siempre. "Cliente"
+  // es lo que se imprime en la cotización (empresa); "Nombre cliente" y "Contacto" son solo para
+  // guardar los datos de la persona de contacto en la sección Clientes, no salen en el PDF.
   function onChangeCliente(valor) {
     setCliente(valor)
-    const match = clientes.find(c => c.nombre.trim().toLowerCase() === valor.trim().toLowerCase())
+    const match = clientes.find(c => (c.empresa || '').trim().toLowerCase() === valor.trim().toLowerCase() || c.nombre.trim().toLowerCase() === valor.trim().toLowerCase())
     if (match) {
       if (match.rut) setClienteRut(match.rut)
       if (match.direccion) setClienteDireccion(match.direccion)
       if (match.correo) setClienteCorreo(match.correo)
+      if (!clienteNombre && match.nombre) setClienteNombre(match.nombre)
+      if (!clienteContacto && match.telefono) setClienteContacto(match.telefono)
+    }
+  }
+  function onChangeClienteNombre(valor) {
+    setClienteNombre(valor)
+    const match = clientes.find(c => c.nombre.trim().toLowerCase() === valor.trim().toLowerCase())
+    if (match) {
+      if (!cliente && match.empresa) setCliente(match.empresa)
+      if (!clienteRut && match.rut) setClienteRut(match.rut)
+      if (!clienteDireccion && match.direccion) setClienteDireccion(match.direccion)
+      if (!clienteCorreo && match.correo) setClienteCorreo(match.correo)
+      if (!clienteContacto && match.telefono) setClienteContacto(match.telefono)
     }
   }
   const [fecha, setFecha] = useState(today)
@@ -1580,7 +1634,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
   const total = neto + iva
 
   function resetForm() {
-    setCliente(''); setClienteRut(''); setClienteDireccion(''); setClienteCorreo('')
+    setCliente(''); setClienteNombre(''); setClienteContacto(''); setClienteRut(''); setClienteDireccion(''); setClienteCorreo('')
     setFecha(today); setItems([nuevoItem()])
     setAplicaDescuento(false); setDescuentoPct(''); setCondiciones(CONDICIONES_DEFAULT)
     if (condicionesRef.current) condicionesRef.current.innerHTML = CONDICIONES_DEFAULT
@@ -1592,20 +1646,30 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
   // cotice a esta misma persona/empresa sus datos aparezcan solos. Es "best effort": si falla,
   // no interrumpe el guardado de la cotización (ya se guardó lo importante).
   async function guardarClienteSiCorresponde() {
-    const nombreTrim = cliente.trim()
-    if (!nombreTrim) return
+    const empresaTrim = cliente.trim()
+    const nombreTrim = clienteNombre.trim()
+    if (!empresaTrim && !nombreTrim) return
     try {
-      const existente = clientes.find(c => c.nombre.trim().toLowerCase() === nombreTrim.toLowerCase())
+      const existente = clientes.find(c =>
+        (empresaTrim && (c.empresa || '').trim().toLowerCase() === empresaTrim.toLowerCase()) ||
+        (nombreTrim && c.nombre.trim().toLowerCase() === nombreTrim.toLowerCase())
+      )
       if (existente) {
         const cambios = {}
+        if (!existente.empresa && empresaTrim) cambios.empresa = empresaTrim
+        if (!existente.telefono && clienteContacto) cambios.telefono = clienteContacto
         if (!existente.rut && clienteRut) cambios.rut = clienteRut
         if (!existente.direccion && clienteDireccion) cambios.direccion = clienteDireccion
         if (!existente.correo && clienteCorreo) cambios.correo = clienteCorreo
         if (Object.keys(cambios).length) await supabase.from('clientes').update(cambios).eq('id', existente.id)
-      } else if (window.confirm(`"${nombreTrim}" es un cliente nuevo. ¿Quieres guardarlo en la lista de clientes para completar sus datos automáticamente la próxima vez?`)) {
-        await supabase.from('clientes').insert({
-          nombre: nombreTrim, rut: clienteRut || null, direccion: clienteDireccion || null, correo: clienteCorreo || null,
-        })
+      } else {
+        const etiqueta = nombreTrim || empresaTrim
+        if (await confirm(`"${etiqueta}" es un cliente nuevo. ¿Quieres guardarlo en la lista de clientes para completar sus datos automáticamente la próxima vez?`)) {
+          await supabase.from('clientes').insert({
+            empresa: empresaTrim || null, nombre: nombreTrim || empresaTrim, telefono: clienteContacto || null,
+            rut: clienteRut || null, direccion: clienteDireccion || null, correo: clienteCorreo || null,
+          })
+        }
       }
     } catch { /* no bloquea el flujo de la cotización */ }
   }
@@ -1639,7 +1703,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
   }
 
   async function deleteCotizacion(q) {
-    if (!window.confirm(`¿Eliminar la cotización N° ${String(q.numero || 0).padStart(6, '0')} de "${q.cliente}"? Esto no se puede deshacer.`)) return
+    if (!(await confirm(`¿Eliminar la cotización N° ${String(q.numero || 0).padStart(6, '0')} de "${q.cliente}"? Esto no se puede deshacer.`))) return
     const { error } = await supabase.from('cotizaciones').delete().eq('id', q.id)
     if (error) { toast('No se pudo eliminar la cotización'); return }
     toast('Cotización eliminada'); reload()
@@ -1647,7 +1711,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
 
   async function deleteSeleccionadas() {
     if (!seleccionadas.length) return
-    if (!window.confirm(`¿Eliminar ${seleccionadas.length} cotización(es) seleccionada(s)? Esto no se puede deshacer.`)) return
+    if (!(await confirm(`¿Eliminar ${seleccionadas.length} cotización(es) seleccionada(s)? Esto no se puede deshacer.`))) return
     const { error } = await supabase.from('cotizaciones').delete().in('id', seleccionadas)
     if (error) { toast('No se pudieron eliminar las cotizaciones'); return }
     toast('Cotizaciones eliminadas'); setSeleccionadas([]); setSelectMode(false); reload()
@@ -1660,14 +1724,23 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
       <div className="toolbar"><div><h1>Cotizaciones</h1><div className="section-sub">Arma una cotización detallada y descarga el PDF para enviar al cliente</div></div></div>
       <div className="card">
         <div className="card-head"><h2>Nueva cotización</h2></div>
-        <div className="quick-row" style={{gridTemplateColumns:'0.7fr 1.3fr 1fr 1fr 1fr'}}>
+        <div className="quick-row" style={{gridTemplateColumns:'0.6fr 1.1fr 1fr 1fr'}}>
           <div className="f-group"><label>N° de cotización</label><input type="text" inputMode="numeric" value={numero} onChange={e => onChangeNumero(e.target.value)} /></div>
           <div className="f-group"><label>Cliente</label>
-            <input type="text" list="dl-clientes" value={cliente} onChange={e => onChangeCliente(e.target.value)} placeholder="Nombre cliente / empresa" autoComplete="off" />
+            <input type="text" list="dl-clientes" value={cliente} onChange={e => onChangeCliente(e.target.value)} placeholder="Nombre cliente / empresa (se imprime en el PDF)" autoComplete="off" />
             <datalist id="dl-clientes">
+              {[...new Set(clientes.flatMap(c => [c.empresa, c.nombre].filter(Boolean)))].map(v => <option key={v} value={v} />)}
+            </datalist>
+          </div>
+          <div className="f-group"><label>Nombre cliente</label>
+            <input type="text" list="dl-clientes-nombre" value={clienteNombre} onChange={e => onChangeClienteNombre(e.target.value)} placeholder="Persona de contacto (no sale en el PDF)" autoComplete="off" />
+            <datalist id="dl-clientes-nombre">
               {clientes.map(c => <option key={c.id} value={c.nombre} />)}
             </datalist>
           </div>
+          <div className="f-group"><label>Contacto</label><input type="text" value={clienteContacto} onChange={e => setClienteContacto(e.target.value)} placeholder="Nombre y/o teléfono" /></div>
+        </div>
+        <div className="quick-row" style={{gridTemplateColumns:'1fr 1fr 1fr'}}>
           <div className="f-group"><label>RUT</label><input type="text" value={clienteRut} onChange={e => setClienteRut(formatRut(e.target.value))} placeholder="Solo números, el formato se pone solo" /></div>
           <div className="f-group"><label>Dirección</label><input type="text" value={clienteDireccion} onChange={e => setClienteDireccion(e.target.value)} placeholder="Calle, número, comuna" /></div>
           <div className="f-group"><label>Correo</label><input type="text" value={clienteCorreo} onChange={e => setClienteCorreo(e.target.value)} placeholder="correo@cliente.cl" /></div>
