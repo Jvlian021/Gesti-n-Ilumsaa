@@ -57,6 +57,10 @@ export default function App() {
   const [calWeekStart, setCalWeekStart] = useState(startOfWorkWeek(new Date()))
   const [reservaModal, setReservaModal] = useState({ show: false, camionId: '', fecha: '', editReserva: null, prefill: null })
   const [confirmState, setConfirmState] = useState(null)
+  // Menú lateral en celular: en pantallas angostas el menú queda oculto fuera de la pantalla y
+  // se abre con el botón ☰ (no afecta nada del formato de escritorio, solo aplica bajo cierto
+  // ancho de pantalla vía CSS).
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   const [camiones, setCamiones] = useState([])
   const [reservas, setReservas] = useState([])
@@ -145,7 +149,11 @@ export default function App() {
 
   return (
     <div id="app" className="show">
-      <Sidebar perfil={perfil} view={view} setView={setView} />
+      <button className="mobile-menu-btn" onClick={() => setMobileNavOpen(true)} aria-label="Abrir menú">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <div className={`mobile-overlay ${mobileNavOpen ? 'show' : ''}`} onClick={() => setMobileNavOpen(false)}></div>
+      <Sidebar perfil={perfil} view={view} setView={setView} mobileOpen={mobileNavOpen} onNavigate={() => setMobileNavOpen(false)} />
       <main className="main">
         {view === 'dashboard' && (
           <Dashboard
@@ -219,7 +227,7 @@ function ConfirmModal({ state, onResult }) {
 }
 
 // ============================================================
-function Sidebar({ perfil, view, setView }) {
+function Sidebar({ perfil, view, setView, mobileOpen, onNavigate }) {
   const items = [
     ['dashboard', 'dashboard', 'Dashboard'],
     ['camiones', 'camiones', 'Camiones'],
@@ -230,14 +238,15 @@ function Sidebar({ perfil, view, setView }) {
     ['cotizaciones', 'cotizaciones', 'Cotizaciones'],
   ]
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
+      <button className="mobile-close-btn" onClick={onNavigate} aria-label="Cerrar menú">×</button>
       <div className="brand">
         <Mark />
         <div className="sub">ALZA HOMBRES</div>
       </div>
       <nav className="nav-group">
         {items.map(([key, icKey, label]) => (
-          <button key={key} className={`nav-item ${view === key ? 'active' : ''}`} onClick={() => setView(key)}>
+          <button key={key} className={`nav-item ${view === key ? 'active' : ''}`} onClick={() => { setView(key); onNavigate && onNavigate() }}>
             <span className="ic">{NavIcons[icKey]}</span> {label}
           </button>
         ))}
