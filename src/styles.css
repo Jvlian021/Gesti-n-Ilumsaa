@@ -187,8 +187,10 @@ table.data textarea.desc-input{width:100%;min-width:260px;padding:8px 10px;borde
 
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(16,24,38,.5);z-index:50;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;}
 .modal-bg.show{display:flex;}
-.modal{background:#fff;border-radius:14px;width:100%;max-width:480px;padding:24px 24px 22px;box-shadow:0 30px 70px rgba(0,0,0,.3);}
-.modal h3{margin:0 0 4px;font-size:17px;}
+.modal{position:relative;background:#fff;border-radius:14px;width:100%;max-width:480px;padding:24px 24px 22px;box-shadow:0 30px 70px rgba(0,0,0,.3);}
+.modal h3{margin:0 0 4px;font-size:17px;padding-right:24px;}
+.modal-close{position:absolute;top:14px;right:14px;width:28px;height:28px;border:none;background:transparent;color:var(--mute);font-size:18px;line-height:1;border-radius:6px;display:flex;align-items:center;justify-content:center;}
+.modal-close:hover{background:var(--gray-bg);color:var(--text);}
 .modal .msub{color:var(--mute);font-size:12.5px;margin-bottom:18px;}
 .modal .f-group{margin-bottom:13px;}
 .modal-actions{display:flex;gap:10px;margin-top:18px;}
