@@ -1237,10 +1237,13 @@ function parseHtmlToBlocks(html) {
 // Dibuja los bloques de "condiciones comerciales" en el PDF, con ajuste de línea (word-wrap)
 // palabra por palabra, respetando la negrita/color de cada una. Los bloques que están
 // completos en negrita (los títulos de sección) se pintan en azul navy con espacio extra
-// arriba, igual que el formato original.
-function renderConditionBlocks(doc, blocks, marginL, contentW, startY, F, NAVY) {
+// arriba, igual que el formato original. `opts.scale` reduce tamaño de letra/espaciado de forma
+// proporcional (para que todo quepa en una sola página) y `opts.draw:false` solo calcula el
+// alto que ocuparía, sin dibujar nada — así se puede medir antes de decidir la escala final.
+function renderConditionBlocks(doc, blocks, marginL, contentW, startY, F, NAVY, opts = {}) {
+  const { scale = 1, draw = true } = opts
   let cy = startY
-  const lineH = 11
+  const lineH = 11 * scale
   blocks.forEach(block => {
     const words = []
     block.forEach(run => {
@@ -1249,24 +1252,26 @@ function renderConditionBlocks(doc, blocks, marginL, contentW, startY, F, NAVY) 
         words.push({ text: part, bold: run.bold, color: run.color })
       })
     })
-    if (!words.length) { cy += 4; return }
+    if (!words.length) { cy += 3 * scale; return }
     const allBold = words.every(w => w.bold)
-    if (allBold) cy += 6
-    const fontSize = allBold ? 9 : 8.5
+    if (allBold) cy += 7 * scale
+    const fontSize = (allBold ? 9 : 8.5) * scale
     doc.setFontSize(fontSize)
     const spaceW = doc.getTextWidth(' ')
     let line = []
     let lineWidth = 0
     function flushLine() {
       if (!line.length) return
-      let x = marginL
-      line.forEach(w => {
-        doc.setFont(F.slab, w.bold ? 'bold' : 'normal')
-        doc.setFontSize(fontSize)
-        doc.setTextColor(...(w.color || (allBold ? NAVY : [0, 0, 0])))
-        doc.text(w.text, x, cy)
-        x += doc.getTextWidth(w.text) + spaceW
-      })
+      if (draw) {
+        let x = marginL
+        line.forEach(w => {
+          doc.setFont(F.slab, w.bold ? 'bold' : 'normal')
+          doc.setFontSize(fontSize)
+          doc.setTextColor(...(w.color || (allBold ? NAVY : [0, 0, 0])))
+          doc.text(w.text, x, cy)
+          x += doc.getTextWidth(w.text) + spaceW
+        })
+      }
       cy += lineH
       line = []; lineWidth = 0
     }
@@ -1280,7 +1285,7 @@ function renderConditionBlocks(doc, blocks, marginL, contentW, startY, F, NAVY) 
       lineWidth += (line.length > 1 ? spaceW : 0) + wWidth
     })
     flushLine()
-    cy += 4
+    if (!allBold) cy += 2 * scale
   })
   return cy
 }
@@ -1290,7 +1295,8 @@ async function generarPdfCotizacion(q, nombreArchivo) {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' })
   const F = await registerFonts(doc)
   const pageW = doc.internal.pageSize.getWidth()
-  const marginL = 40, marginR = 40
+  const pageH = doc.internal.pageSize.getHeight()
+  const marginL = 40, marginR = 40, marginB = 34
   const contentW = pageW - marginL - marginR
   let y = 42
 
@@ -1380,8 +1386,22 @@ async function generarPdfCotizacion(q, nombreArchivo) {
 
   let cy = by + banco.length * 12.5 + 20
   if (isHtmlContent(q.condiciones)) {
-    // Texto enriquecido guardado desde el mini-editor (negrita/color) — se respeta tal cual.
-    cy = renderConditionBlocks(doc, parseHtmlToBlocks(q.condiciones), marginL, contentW, cy, F, NAVY)
+    // Texto enriquecido guardado desde el mini-editor (negrita/color). Para que todo quede
+    // dentro de una sola página (como en el formato original), primero se mide cuánto ocuparía
+    // el texto y, si no entra completo, se va reduciendo el tamaño de letra/espaciado en pasos
+    // hasta que quepa — así no se corta contenido ni se pasa a una segunda página, salvo que el
+    // texto sea tan largo que ni con la letra más chica alcance (caso muy poco común).
+    const blocks = parseHtmlToBlocks(q.condiciones)
+    const scales = [1, 0.94, 0.88, 0.82, 0.76, 0.7, 0.64, 0.58]
+    let chosen = scales[scales.length - 1]
+    const availableH = pageH - marginB - cy
+    for (const s of scales) {
+      const h = renderConditionBlocks(doc, blocks, marginL, contentW, 0, F, NAVY, { scale: s, draw: false })
+      if (h <= availableH) { chosen = s; break }
+    }
+    const neededH = renderConditionBlocks(doc, blocks, marginL, contentW, 0, F, NAVY, { scale: chosen, draw: false })
+    if (neededH > pageH - marginB - cy) { doc.addPage(); cy = 42 }
+    cy = renderConditionBlocks(doc, blocks, marginL, contentW, cy, F, NAVY, { scale: chosen, draw: true })
   } else {
     // Cotizaciones guardadas antes de este cambio (texto plano): se mantiene el formato anterior,
     // donde las líneas que terminan en ":" se pintan como título en negrita.
