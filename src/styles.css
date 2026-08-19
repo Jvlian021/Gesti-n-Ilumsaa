@@ -202,6 +202,14 @@ table.data textarea.desc-input{width:100%;min-width:260px;padding:8px 10px;borde
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
 .section-sub{font-size:12.5px;color:var(--mute);margin:-6px 0 16px;}
+
+.rte-toolbar{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+.rte-btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:34px;height:30px;padding:0 10px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:12.5px;cursor:pointer;color:var(--text);}
+.rte-btn:hover{background:var(--gray-bg);}
+.rte-color-btn{position:relative;overflow:hidden;}
+.rte-color-btn input[type=color]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:none;padding:0;}
+.rte-editor{width:100%;min-height:260px;padding:9px 10px;border:1px solid var(--border);border-radius:7px;font-size:13.5px;font-family:inherit;overflow-y:auto;line-height:1.5;}
+.rte-editor:focus{outline:2px solid var(--navy);outline-offset:1px;}
 .loading-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--mute);font-size:13px;}
 
 @media(max-width:880px){
