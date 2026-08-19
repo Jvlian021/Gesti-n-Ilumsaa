@@ -234,7 +234,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
     <>
       <div className="topbar">
         <div>
-          <h1>Bienvenida, {perfil.nombre}</h1>
+          <h1>{perfil.rol === 'Administradora' ? 'Bienvenida' : 'Bienvenido'}, {perfil.nombre}</h1>
           <div className="greet">{perfil.rol}</div>
         </div>
         <div className="pill live"><span className="dot"></span> {new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
@@ -317,7 +317,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
             <div className="quick-row">
               <div className="f-group"><label>Tamaño de camión</label>
                 <select value={qSize} onChange={e => setQSize(e.target.value)}>
-                  <option value="13">13 metros</option><option value="20">20 metros</option>
+                  <option value="13">13 metros</option><option value="18">18 metros</option><option value="20">20 metros</option>
                 </select>
               </div>
               <div className="f-group"><label>Fecha</label><input type="date" value={qDate} onChange={e => setQDate(e.target.value)} /></div>
@@ -461,7 +461,7 @@ function Camiones({ camiones, isAdmin, toast, reload }) {
                 </td>
                 <td>{isAdmin ? (
                   <select value={c.tamano} onChange={e => editField(c.id, 'tamano', e.target.value)}>
-                    <option value={13}>13 m</option><option value={20}>20 m</option>
+                    <option value={13}>13 m</option><option value={18}>18 m</option><option value={20}>20 m</option>
                   </select>
                 ) : `${c.tamano} m`}</td>
                 <td>{isAdmin ? (
@@ -504,7 +504,7 @@ function Camiones({ camiones, isAdmin, toast, reload }) {
             <div className="f-group"><label>Patente</label><input type="text" value={form.patente} onChange={e => setForm({...form, patente: e.target.value})} placeholder="Ej: AB-CD-12" /></div>
             <div className="f-group"><label>Tamaño</label>
               <select value={form.tamano} onChange={e => setForm({...form, tamano: e.target.value})}>
-                <option value="13">13 metros</option><option value="20">20 metros</option>
+                <option value="13">13 metros</option><option value="18">18 metros</option><option value="20">20 metros</option>
               </select>
             </div>
             <div className="f-group"><label>¿Aislado?</label>
@@ -610,7 +610,7 @@ function Clientes({ clientes, toast, reload }) {
   const [rows, setRows] = useState(clientes)
   const [savingId, setSavingId] = useState(null)
   const [busca, setBusca] = useState('')
-  const [nuevo, setNuevo] = useState({ nombre: '', rut: '', direccion: '', correo: '', telefono: '' })
+  const [nuevo, setNuevo] = useState({ empresa: '', nombre: '', rut: '', direccion: '', correo: '', telefono: '' })
   useEffect(() => setRows(clientes), [clientes])
 
   function editField(id, field, value) {
@@ -622,7 +622,7 @@ function Clientes({ clientes, toast, reload }) {
     if (!row.nombre.trim()) { toast('El nombre no puede quedar vacío'); return }
     setSavingId(id)
     const { error } = await supabase.from('clientes').update({
-      nombre: row.nombre.trim(), rut: row.rut || null, direccion: row.direccion || null,
+      empresa: row.empresa || null, nombre: row.nombre.trim(), rut: row.rut || null, direccion: row.direccion || null,
       correo: row.correo || null, telefono: row.telefono || null,
     }).eq('id', id)
     setSavingId(null)
@@ -633,11 +633,11 @@ function Clientes({ clientes, toast, reload }) {
   async function addCliente() {
     if (!nuevo.nombre.trim()) { toast('Escribe el nombre del cliente'); return }
     const { error } = await supabase.from('clientes').insert({
-      nombre: nuevo.nombre.trim(), rut: nuevo.rut.trim() || null, direccion: nuevo.direccion.trim() || null,
+      empresa: nuevo.empresa.trim() || null, nombre: nuevo.nombre.trim(), rut: nuevo.rut.trim() || null, direccion: nuevo.direccion.trim() || null,
       correo: nuevo.correo.trim() || null, telefono: nuevo.telefono.trim() || null,
     })
     if (error) { toast('No se pudo agregar el cliente'); return }
-    setNuevo({ nombre: '', rut: '', direccion: '', correo: '', telefono: '' })
+    setNuevo({ empresa: '', nombre: '', rut: '', direccion: '', correo: '', telefono: '' })
     reload(); toast('Cliente agregado')
   }
 
@@ -649,13 +649,13 @@ function Clientes({ clientes, toast, reload }) {
   }
 
   const visibles = busca.trim()
-    ? rows.filter(c => c.nombre.toLowerCase().includes(busca.trim().toLowerCase()))
+    ? rows.filter(c => c.nombre.toLowerCase().includes(busca.trim().toLowerCase()) || (c.empresa || '').toLowerCase().includes(busca.trim().toLowerCase()))
     : rows
 
   return (
     <>
       <div className="toolbar">
-        <div><h1>Clientes</h1><div className="section-sub">Al cotizar, elige un cliente ya cargado aquí y sus datos se completan solos.</div></div>
+        <div><h1>Clientes</h1><div className="section-sub">Al cotizar o reservar, elige un cliente ya cargado aquí y sus datos se completan solos.</div></div>
       </div>
       <div className="card" style={{padding:0}}>
         <div className="card-head" style={{padding:'18px 18px 0'}}>
@@ -664,16 +664,17 @@ function Clientes({ clientes, toast, reload }) {
           </div>
         </div>
         <table className="data">
-          <thead><tr><th>Nombre</th><th>RUT</th><th>Dirección</th><th>Correo</th><th>Teléfono</th><th></th></tr></thead>
+          <thead><tr><th>Empresa</th><th>Nombre cliente</th><th>RUT</th><th>Dirección</th><th>Correo</th><th>Contacto</th><th></th></tr></thead>
           <tbody>
-            {!visibles.length && <tr><td colSpan={6} style={{textAlign:'center',color:'var(--mute2)',padding:24}}>{rows.length ? 'No hay clientes que coincidan.' : 'Aún no hay clientes cargados. Se agregan solos al guardar una cotización, o puedes sumarlos aquí abajo.'}</td></tr>}
+            {!visibles.length && <tr><td colSpan={7} style={{textAlign:'center',color:'var(--mute2)',padding:24}}>{rows.length ? 'No hay clientes que coincidan.' : 'Aún no hay clientes cargados. Se agregan solos al guardar una cotización o una reserva, o puedes sumarlos aquí abajo.'}</td></tr>}
             {visibles.map(c => (
               <tr key={c.id}>
-                <td><input type="text" value={c.nombre} onChange={e => editField(c.id, 'nombre', e.target.value)} style={{width:170}} /></td>
+                <td><input type="text" value={c.empresa || ''} onChange={e => editField(c.id, 'empresa', e.target.value)} placeholder="Empresa" style={{width:150}} /></td>
+                <td><input type="text" value={c.nombre} onChange={e => editField(c.id, 'nombre', e.target.value)} style={{width:150}} /></td>
                 <td><input type="text" value={c.rut || ''} onChange={e => editField(c.id, 'rut', formatRut(e.target.value))} style={{width:110}} /></td>
                 <td><input type="text" value={c.direccion || ''} onChange={e => editField(c.id, 'direccion', e.target.value)} style={{width:170}} /></td>
                 <td><input type="text" value={c.correo || ''} onChange={e => editField(c.id, 'correo', e.target.value)} style={{width:170}} /></td>
-                <td><input type="text" value={c.telefono || ''} onChange={e => editField(c.id, 'telefono', e.target.value)} placeholder="+56 9 ..." style={{width:130}} /></td>
+                <td><input type="text" value={c.telefono || ''} onChange={e => editField(c.id, 'telefono', e.target.value)} placeholder="Nombre y/o teléfono" style={{width:150}} /></td>
                 <td style={{display:'flex',gap:6}}>
                   <button className="btn-dark btn-sm" disabled={savingId===c.id} onClick={() => saveRow(c.id)}>{savingId===c.id ? 'Guardando…' : 'Guardar'}</button>
                   <button className="btn-danger btn-sm" onClick={() => deleteCliente(c)}>Eliminar</button>
@@ -684,12 +685,13 @@ function Clientes({ clientes, toast, reload }) {
         </table>
         <div style={{padding:16,borderTop:'1px solid var(--border)'}}>
           <div className="section-sub" style={{margin:'0 0 10px'}}>Agregar un cliente nuevo</div>
-          <div className="quick-row" style={{gridTemplateColumns:'1.2fr 1fr 1.3fr 1.3fr 1fr auto'}}>
-            <div className="f-group"><label>Nombre</label><input type="text" value={nuevo.nombre} onChange={e => setNuevo({...nuevo, nombre: e.target.value})} placeholder="Nombre / empresa" /></div>
+          <div className="quick-row" style={{gridTemplateColumns:'1.1fr 1.1fr 1fr 1.3fr 1.3fr 1.1fr auto'}}>
+            <div className="f-group"><label>Empresa</label><input type="text" value={nuevo.empresa} onChange={e => setNuevo({...nuevo, empresa: e.target.value})} placeholder="Nombre de la empresa" /></div>
+            <div className="f-group"><label>Nombre cliente</label><input type="text" value={nuevo.nombre} onChange={e => setNuevo({...nuevo, nombre: e.target.value})} placeholder="Persona de contacto" /></div>
             <div className="f-group"><label>RUT</label><input type="text" value={nuevo.rut} onChange={e => setNuevo({...nuevo, rut: formatRut(e.target.value)})} /></div>
             <div className="f-group"><label>Dirección</label><input type="text" value={nuevo.direccion} onChange={e => setNuevo({...nuevo, direccion: e.target.value})} /></div>
             <div className="f-group"><label>Correo</label><input type="text" value={nuevo.correo} onChange={e => setNuevo({...nuevo, correo: e.target.value})} /></div>
-            <div className="f-group"><label>Teléfono</label><input type="text" value={nuevo.telefono} onChange={e => setNuevo({...nuevo, telefono: e.target.value})} placeholder="+56 9 ..." /></div>
+            <div className="f-group"><label>Contacto</label><input type="text" value={nuevo.telefono} onChange={e => setNuevo({...nuevo, telefono: e.target.value})} placeholder="Nombre y/o teléfono" /></div>
             <button className="btn-dark" onClick={addCliente}>Agregar</button>
           </div>
         </div>
@@ -726,7 +728,7 @@ function Reservas({ camiones, reservas, conductores, tarifasComunas, perfil, toa
               const cond = conductores.find(cd => cd.id === r.conductor_id)
               return (
                 <tr key={r.id}>
-                  <td><strong>{r.cliente}</strong></td>
+                  <td><strong>{r.empresa || r.cliente}</strong>{r.empresa && r.cliente ? <div className="section-sub" style={{margin:0}}>{r.cliente}</div> : null}</td>
                   <td>{cam?.nombre || '—'}</td>
                   <td className="mono">{new Date(r.fecha + 'T00:00:00').toLocaleDateString('es-CL')}</td>
                   <td className="mono">{r.hora ? r.hora.slice(0,5) : '—'}</td>
@@ -751,7 +753,7 @@ function Reservas({ camiones, reservas, conductores, tarifasComunas, perfil, toa
 // ============================================================
 function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, clientes, perfil, toast, reload, initialCamionId, initialFecha, editReserva }) {
   const today = isoDate(new Date())
-  const [form, setForm] = useState({ camionId: '', cliente: '', contacto: '', tipoTrabajo: '', fecha: today, hasta: '', hora: '', comuna: '', direccion: '', estado: 'Reservado', conductorId: '', descripcion: '' })
+  const [form, setForm] = useState({ camionId: '', empresa: '', cliente: '', contacto: '', tipoTrabajo: '', fecha: today, hasta: '', hora: '', comuna: '', direccion: '', estado: 'Reservado', conductorId: '', descripcion: '' })
   const isEdit = !!editReserva
 
   useEffect(() => {
@@ -759,6 +761,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
     if (editReserva) {
       setForm({
         camionId: editReserva.camion_id || camiones[0]?.id || '',
+        empresa: editReserva.empresa || '',
         cliente: editReserva.cliente || '',
         contacto: editReserva.contacto || '',
         tipoTrabajo: editReserva.tipo_trabajo || '',
@@ -777,7 +780,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
         camionId: initialCamionId || camiones[0]?.id || '',
         fecha: initialFecha || today,
         hasta: initialFecha || today,
-        hora: '', cliente: '', contacto: '', tipoTrabajo: '', direccion: '', conductorId: '', descripcion: '', estado: 'Reservado',
+        hora: '', empresa: '', cliente: '', contacto: '', tipoTrabajo: '', direccion: '', conductorId: '', descripcion: '', estado: 'Reservado',
         comuna: f.comuna || tarifasComunas[0]?.comuna || '',
       }))
     }
@@ -799,6 +802,18 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
     setForm(f => ({
       ...f,
       cliente: valor,
+      empresa: match && !f.empresa ? (match.empresa || '') : f.empresa,
+      direccion: match && !f.direccion ? (match.direccion || '') : f.direccion,
+      contacto: match && !f.contacto ? (match.telefono || '') : f.contacto,
+    }))
+  }
+
+  function onChangeEmpresa(valor) {
+    const match = (clientes || []).find(c => (c.empresa || '').trim().toLowerCase() === valor.trim().toLowerCase() && valor.trim())
+    setForm(f => ({
+      ...f,
+      empresa: valor,
+      cliente: match && !f.cliente ? (match.nombre || '') : f.cliente,
       direccion: match && !f.direccion ? (match.direccion || '') : f.direccion,
       contacto: match && !f.contacto ? (match.telefono || '') : f.contacto,
     }))
@@ -819,13 +834,13 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
       return
     }
 
-    if (!form.cliente || !form.direccion) { toast('Completa cliente y dirección'); return }
+    if ((!form.empresa && !form.cliente) || !form.direccion) { toast('Completa la empresa o el nombre del cliente, y la dirección'); return }
     const dias = []
     for (let d = new Date(form.fecha + 'T00:00:00'), end = new Date(hastaFinal + 'T00:00:00'); d <= end; d.setDate(d.getDate() + 1)) {
       dias.push(isoDate(d))
     }
     const base = {
-      camion_id: form.camionId, cliente: form.cliente, contacto: form.contacto || null,
+      camion_id: form.camionId, empresa: form.empresa || null, cliente: form.cliente, contacto: form.contacto || null,
       tipo_trabajo: form.tipoTrabajo || null, hora: form.hora || null,
       comuna: form.comuna, direccion: form.direccion, estado: form.estado,
       conductor_id: form.conductorId || null, descripcion: form.descripcion || null,
@@ -875,13 +890,21 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
         </div>
         {esMantencion && <div className="section-sub" style={{margin:'-6px 0 12px'}}>El camión quedará en mantención en el calendario desde la fecha "Desde" hasta la fecha "Hasta".</div>}
         {!esMantencion && <>
-          <div className="f-group"><label>Cliente</label>
-            <input type="text" list="dl-clientes-reserva" value={form.cliente} onChange={e => onChangeCliente(e.target.value)} placeholder="Nombre cliente / empresa" autoComplete="off" />
-            <datalist id="dl-clientes-reserva">
-              {(clientes || []).map(c => <option key={c.id} value={c.nombre} />)}
-            </datalist>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div className="f-group"><label>Empresa</label>
+              <input type="text" list="dl-empresas-reserva" value={form.empresa} onChange={e => onChangeEmpresa(e.target.value)} placeholder="Nombre de la empresa" autoComplete="off" />
+              <datalist id="dl-empresas-reserva">
+                {[...new Set((clientes || []).map(c => c.empresa).filter(Boolean))].map(e => <option key={e} value={e} />)}
+              </datalist>
+            </div>
+            <div className="f-group"><label>Nombre cliente</label>
+              <input type="text" list="dl-clientes-reserva" value={form.cliente} onChange={e => onChangeCliente(e.target.value)} placeholder="Persona de contacto" autoComplete="off" />
+              <datalist id="dl-clientes-reserva">
+                {(clientes || []).map(c => <option key={c.id} value={c.nombre} />)}
+              </datalist>
+            </div>
           </div>
-          <div className="f-group"><label>Contacto del cliente</label><input type="text" value={form.contacto} onChange={e => setForm({...form, contacto: e.target.value})} placeholder="Nombre y/o teléfono de contacto" /></div>
+          <div className="f-group"><label>Contacto</label><input type="text" value={form.contacto} onChange={e => setForm({...form, contacto: e.target.value})} placeholder="Nombre y/o teléfono de contacto" /></div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
             <div className="f-group"><label>Tipo de trabajo</label>
               <input type="text" list="dl-tipo-trabajo" value={form.tipoTrabajo} onChange={e => setForm({...form, tipoTrabajo: e.target.value})} placeholder="Escribe o elige…" autoComplete="off" />
@@ -925,13 +948,13 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
   const [arriendo, setArriendo] = useState(tarifaArriendo)
   const [comunas, setComunas] = useState(tarifasComunas)
   const [filtro, setFiltro] = useState('')
-  const [nueva, setNueva] = useState({ comuna: '', p13: '', p20: '', p28: '' })
+  const [nueva, setNueva] = useState({ comuna: '', p13: '', p18: '', p20: '' })
   useEffect(() => setArriendo(tarifaArriendo), [tarifaArriendo])
   useEffect(() => setComunas(tarifasComunas), [tarifasComunas])
 
   async function saveAll() {
     const upsertsArriendo = Object.entries(arriendo).map(([tamano, valor]) => ({ tamano: Number(tamano), valor: Number(valor) }))
-    const upsertsComunas = comunas.map(c => ({ id: c.id, comuna: c.comuna, p13: Number(c.p13), p20: Number(c.p20), p28: Number(c.p28) }))
+    const upsertsComunas = comunas.map(c => ({ id: c.id, comuna: c.comuna, p13: Number(c.p13), p18: Number(c.p18), p20: Number(c.p20) }))
     const [r1, r2] = await Promise.all([
       supabase.from('tarifas_arriendo').upsert(upsertsArriendo),
       supabase.from('tarifas_comunas').upsert(upsertsComunas),
@@ -943,10 +966,10 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
   async function addComuna() {
     if (!nueva.comuna.trim()) { toast('Escribe el nombre de la comuna'); return }
     const { error } = await supabase.from('tarifas_comunas').insert({
-      comuna: nueva.comuna.trim(), p13: Number(nueva.p13)||0, p20: Number(nueva.p20)||0, p28: Number(nueva.p28)||0,
+      comuna: nueva.comuna.trim(), p13: Number(nueva.p13)||0, p18: Number(nueva.p18)||0, p20: Number(nueva.p20)||0,
     })
     if (error) { toast('No se pudo agregar (¿ya existe esa comuna?)'); return }
-    setNueva({ comuna: '', p13: '', p20: '', p28: '' })
+    setNueva({ comuna: '', p13: '', p18: '', p20: '' })
     reload(); toast('Comuna agregada')
   }
 
@@ -974,7 +997,7 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
         <table className="data">
           <thead><tr><th>Tamaño</th><th>Valor por hora</th></tr></thead>
           <tbody>
-            {[13, 20].map(sz => (
+            {[13, 18, 20].map(sz => (
               <tr key={sz}>
                 <td>{sz} metros</td>
                 <td>{isAdmin
@@ -998,15 +1021,15 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
           </div>
         </div>
         <table className="data">
-          <thead><tr><th>Comuna</th><th>13 metros</th><th>20 metros</th>{isAdmin && <th></th>}</tr></thead>
+          <thead><tr><th>Comuna</th><th>13 metros</th><th>18 metros</th><th>20 metros</th>{isAdmin && <th></th>}</tr></thead>
           <tbody>
-            {!visibles.length && <tr><td colSpan={4} style={{textAlign:'center',color:'var(--mute2)',padding:20}}>No hay comunas que coincidan.</td></tr>}
+            {!visibles.length && <tr><td colSpan={5} style={{textAlign:'center',color:'var(--mute2)',padding:20}}>No hay comunas que coincidan.</td></tr>}
             {visibles.map((c) => {
               const i = comunas.findIndex(x => x.id === c.id)
               return (
                 <tr key={c.id}>
                   <td><strong>{c.comuna}</strong></td>
-                  {['p13', 'p20'].map(k => (
+                  {['p13', 'p18', 'p20'].map(k => (
                     <td key={k}>{isAdmin
                       ? <input type="text" inputMode="numeric" value={fmtInputMoney(comunas[i][k])} onChange={e => { const cp = [...comunas]; cp[i] = {...cp[i], [k]: parseMoneyInput(e.target.value)}; setComunas(cp) }} />
                       : <span className="mono">{fmtMoney(c[k])}</span>}
@@ -1021,9 +1044,10 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload }) {
         {isAdmin && (
           <div style={{padding:16,borderTop:'1px solid var(--border)'}}>
             <div className="section-sub" style={{margin:'0 0 10px'}}>Agregar una comuna nueva a la lista</div>
-            <div className="quick-row" style={{gridTemplateColumns:'1.3fr 1fr 1fr auto'}}>
+            <div className="quick-row" style={{gridTemplateColumns:'1.3fr 1fr 1fr 1fr auto'}}>
               <div className="f-group"><label>Comuna</label><input type="text" value={nueva.comuna} onChange={e => setNueva({...nueva, comuna: e.target.value})} placeholder="Nombre de la comuna" /></div>
               <div className="f-group"><label>13 m</label><input type="text" inputMode="numeric" value={nueva.p13 === '' ? '' : fmtInputMoney(nueva.p13)} onChange={e => setNueva({...nueva, p13: parseMoneyInput(e.target.value)})} placeholder="0" /></div>
+              <div className="f-group"><label>18 m</label><input type="text" inputMode="numeric" value={nueva.p18 === '' ? '' : fmtInputMoney(nueva.p18)} onChange={e => setNueva({...nueva, p18: parseMoneyInput(e.target.value)})} placeholder="0" /></div>
               <div className="f-group"><label>20 m</label><input type="text" inputMode="numeric" value={nueva.p20 === '' ? '' : fmtInputMoney(nueva.p20)} onChange={e => setNueva({...nueva, p20: parseMoneyInput(e.target.value)})} placeholder="0" /></div>
               <button className="btn-dark" onClick={addComuna}>Agregar</button>
             </div>
@@ -1057,21 +1081,21 @@ const DATOS_BANCARIOS = [
 // completos en negrita se muestran como título en negrita/azul en el PDF; el resto se muestra
 // como viñeta, respetando la negrita/color que se le haya puesto a cada palabra.
 const CONDICIONES_DEFAULT = [
-  '<div><b>Condiciones Comerciales:</b></div>',
-  '<div>- <b>Reserva de Servicio:</b> Para garantizar la disponibilidad del equipo, se requiere la emisión de una Orden de Compra (OC) y/o el abono del 50% de la cotización. El saldo restante deberá ser regularizado al finalizar la prestación del servicio.</div>',
-  '<div>- <b>Continuidad por Condiciones Climáticas:</b> En caso de que factores climáticos impidan el desarrollo normal de las faenas, el cobro se limitará exclusivamente al tiempo de permanencia del equipo y personal en terreno, sin considerar necesariamente las horas de operación efectiva.</div>',
-  '<div>- <b>Extensiones de Horario:</b> Las labores que excedan el horario habitual (después de las 17:00 horas los días lunes y martes, y desde las 16:00 horas los días miércoles a viernes) tendrán un recargo del 30% del valor hora en jornada hábil. Para extensiones en horario inhábil, la hora se valorizará de forma proporcional.</div>',
-  '<div>- <b>Servicio de Arriendo de Arnés de Seguridad:</b> En caso de no contar con uno, el cliente podrá solicitar el arriendo de un arnés de seguridad certificado para el trabajo en altura. Su entrega estará sujeta a la firma de un check list de recepción y un deslinde de responsabilidad por mal uso. Es responsabilidad exclusiva del cliente garantizar que todo su personal en terreno cuente con los demás Equipos de Protección Personal (EPP) obligatorios, tales como casco de seguridad con barbiquejo, guantes y calzado de seguridad.</div>',
-  '<div><b>Equipamiento y Certificación:</b></div>',
-  '<div>- <b>Personal Calificado:</b> El servicio es operado exclusivamente por un conductor con licencia profesional y certificación técnica en operación de camiones alza hombre vigente.</div>',
-  '<div>- <b>Seguridad y Normativa:</b> El hidroelevador cuenta con su certificación técnica al día y está equipado íntegramente con elementos de seguridad (conos, botiquín y extintores) bajo la normativa vigente.</div>',
-  '<div>- <b>Respaldo:</b> La unidad dispone de seguro vehicular externo para cobertura de eventualidades durante el servicio.</div>',
-  '<div><b>Marco de Responsabilidad y Operación:</b></div>',
-  '<div>- <b>Cuidado del Activo:</b> Se solicita al arrendatario velar por la integridad del equipo durante su permanencia en la obra, asumiendo la responsabilidad por daños derivados de la manipulación o entorno de trabajo.</div>',
-  '<div>- <b>Facultad de Detención por Seguridad:</b> El conductor/operador está plenamente facultado para suspender las maniobras si evalúa que no se cumplen las condiciones mínimas de seguridad (tales como exceso de viento, falta de EPP o interferencias en el entorno). En este caso, se deberá cancelar el valor del traslado y el tiempo de permanencia del equipo en terreno.</div>',
-  '<div>- <b>Gestión Administrativa:</b> Es responsabilidad del cliente asegurar que el lugar de trabajo cuente con los permisos municipales o autorizaciones de tránsito necesarios para la operación, a fin de evitar interrupciones o sanciones administrativas.</div>',
-  '<div><b>Cancelaciones:</b></div>',
-  '<div>- <b>Aviso de Cancelación:</b> Ante una anulación del servicio sin anticipación, se procederá al cobro del valor asociado al traslado del equipo.</div>',
+  '<div style="color:#002060"><b>Condiciones Comerciales:</b></div>',
+  '<div style="color:#002060">- <b>Reserva de Servicio:</b> Para garantizar la disponibilidad del equipo, se requiere la emisión de una Orden de Compra (OC) y/o el abono del 50% de la cotización. El saldo restante deberá ser regularizado al finalizar la prestación del servicio.</div>',
+  '<div style="color:#002060">- <b>Continuidad por Condiciones Climáticas:</b> En caso de que factores climáticos impidan el desarrollo normal de las faenas, el cobro se limitará exclusivamente al tiempo de permanencia del equipo y personal en terreno, sin considerar necesariamente las horas de operación efectiva.</div>',
+  '<div style="color:#002060">- <b>Extensiones de Horario:</b> Las labores que excedan el horario habitual (después de las 17:00 horas los días lunes y martes, y desde las 16:00 horas los días miércoles a viernes) tendrán un recargo del 30% del valor hora en jornada hábil. Para extensiones en horario inhábil, la hora se valorizará de forma proporcional.</div>',
+  '<div style="color:#002060">- <b>Servicio de Arriendo de Arnés de Seguridad:</b> En caso de no contar con uno, el cliente podrá solicitar el arriendo de un arnés de seguridad certificado para el trabajo en altura. Su entrega estará sujeta a la firma de un check list de recepción y un deslinde de responsabilidad por mal uso. Es responsabilidad exclusiva del cliente garantizar que todo su personal en terreno cuente con los demás Equipos de Protección Personal (EPP) obligatorios, tales como casco de seguridad con barbiquejo, guantes y calzado de seguridad.</div>',
+  '<div style="color:#002060"><b>Equipamiento y Certificación:</b></div>',
+  '<div style="color:#002060">- <b>Personal Calificado:</b> El servicio es operado exclusivamente por un conductor con licencia profesional y certificación técnica en operación de camiones alza hombre vigente.</div>',
+  '<div style="color:#002060">- <b>Seguridad y Normativa:</b> El hidroelevador cuenta con su certificación técnica al día y está equipado íntegramente con elementos de seguridad (conos, botiquín y extintores) bajo la normativa vigente.</div>',
+  '<div style="color:#002060">- <b>Respaldo:</b> La unidad dispone de seguro vehicular externo para cobertura de eventualidades durante el servicio.</div>',
+  '<div style="color:#002060"><b>Marco de Responsabilidad y Operación:</b></div>',
+  '<div style="color:#002060">- <b>Cuidado del Activo:</b> Se solicita al arrendatario velar por la integridad del equipo durante su permanencia en la obra, asumiendo la responsabilidad por daños derivados de la manipulación o entorno de trabajo.</div>',
+  '<div style="color:#002060">- <b>Facultad de Detención por Seguridad:</b> El conductor/operador está plenamente facultado para suspender las maniobras si evalúa que no se cumplen las condiciones mínimas de seguridad (tales como exceso de viento, falta de EPP o interferencias en el entorno). En este caso, se deberá cancelar el valor del traslado y el tiempo de permanencia del equipo en terreno.</div>',
+  '<div style="color:#002060">- <b>Gestión Administrativa:</b> Es responsabilidad del cliente asegurar que el lugar de trabajo cuente con los permisos municipales o autorizaciones de tránsito necesarios para la operación, a fin de evitar interrupciones o sanciones administrativas.</div>',
+  '<div style="color:#002060"><b>Cancelaciones:</b></div>',
+  '<div style="color:#002060">- <b>Aviso de Cancelación:</b> Ante una anulación del servicio sin anticipación, se procederá al cobro del valor asociado al traslado del equipo.</div>',
 ].join('')
 
 // Colores exactos del formato Excel original (navy y azul medio)
@@ -1578,7 +1602,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
         if (!existente.direccion && clienteDireccion) cambios.direccion = clienteDireccion
         if (!existente.correo && clienteCorreo) cambios.correo = clienteCorreo
         if (Object.keys(cambios).length) await supabase.from('clientes').update(cambios).eq('id', existente.id)
-      } else {
+      } else if (window.confirm(`"${nombreTrim}" es un cliente nuevo. ¿Quieres guardarlo en la lista de clientes para completar sus datos automáticamente la próxima vez?`)) {
         await supabase.from('clientes').insert({
           nombre: nombreTrim, rut: clienteRut || null, direccion: clienteDireccion || null, correo: clienteCorreo || null,
         })
@@ -1663,7 +1687,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
                 <td>
                   <select value={it.altura || ''} onChange={e => onChangeAltura(i, e.target.value)} style={{width:88}}>
                     <option value="">—</option>
-                    <option value="13">13 m</option><option value="20">20 m</option>
+                    <option value="13">13 m</option><option value="18">18 m</option><option value="20">20 m</option>
                   </select>
                 </td>
                 <td>
@@ -1699,7 +1723,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
           <div className="quick-row" style={{gridTemplateColumns:'1fr 1fr', marginTop:12}}>
             <div className="f-group"><label>Traslado · tamaño de camión (para sugerir el valor)</label>
               <select value={trasladoTamano} onChange={e => setTrasladoTamano(e.target.value)}>
-                <option value="13">13 metros</option><option value="20">20 metros</option>
+                <option value="13">13 metros</option><option value="18">18 metros</option><option value="20">20 metros</option>
               </select>
             </div>
             <div className="f-group"><label>Traslado · comuna de destino</label>
@@ -1726,7 +1750,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
             <button type="button" className="rte-btn" title="Negrita" onMouseDown={e => e.preventDefault()} onClick={() => execRte('bold')}><b>N</b></button>
             <label className="rte-btn rte-color-btn" title="Color de letra" onMouseDown={saveSelection}>
               A
-              <input type="color" defaultValue="#000000" onChange={e => setCondicionesColor(e.target.value)} />
+              <input type="color" defaultValue="#002060" onChange={e => setCondicionesColor(e.target.value)} />
             </label>
             <button type="button" className="rte-btn" title="Quitar formato" onMouseDown={e => e.preventDefault()} onClick={() => execRte('removeFormat')}>Limpiar</button>
           </div>
