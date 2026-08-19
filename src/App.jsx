@@ -12,6 +12,18 @@ const Mark = () => (
   <div className="mark-plate"><img src="/logo.png" alt="Ilumsa" className="mark-img" /></div>
 )
 
+// Sugerencias para "Tipo de trabajo" en el formulario de reservas — el campo queda libre
+// para escribir cualquier cosa, esto solo ayuda a elegir rápido los más comunes.
+const TIPOS_TRABAJO = [
+  'Poda de árboles',
+  'Mantención de alumbrado público',
+  'Instalación eléctrica',
+  'Trabajo en altura / fachada',
+  'Montaje de estructuras',
+  'Rescate o emergencia',
+  'Otro',
+]
+
 // Iconos de navegación en SVG (más confiables entre navegadores que los emoji/símbolos unicode)
 const NavIcons = {
   dashboard: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>,
@@ -20,6 +32,7 @@ const NavIcons = {
   tarifas: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c0-1.1-1.34-2-3-2s-3 .9-3 2 1.34 1.6 3 2 3 .9 3 2-1.34 2-3 2-3-.9-3-2M12 6v2M12 16v2"/></svg>,
   cotizaciones: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M9 12h6M9 16h6M9 8h3"/></svg>,
   conductores: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.9 3.13-7 7-7s7 3.1 7 7"/></svg>,
+  clientes: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="7" r="2.4"/><path d="M15.5 13.2c2.5.4 4.5 2.5 4.5 5.3"/></svg>,
 }
 
 export default function App() {
@@ -34,6 +47,7 @@ export default function App() {
   const [reservas, setReservas] = useState([])
   const [cotizaciones, setCotizaciones] = useState([])
   const [conductores, setConductores] = useState([])
+  const [clientes, setClientes] = useState([])
   const [tarifaArriendo, setTarifaArriendo] = useState({})
   const [tarifasComunas, setTarifasComunas] = useState([])
 
@@ -52,13 +66,14 @@ export default function App() {
 
   // ---------- Carga de datos + realtime ----------
   const loadAll = useCallback(async () => {
-    const [c, r, q, ta, tc, cd] = await Promise.all([
+    const [c, r, q, ta, tc, cd, cl] = await Promise.all([
       supabase.from('camiones').select('*').order('nombre'),
       supabase.from('reservas').select('*'),
       supabase.from('cotizaciones').select('*'),
       supabase.from('tarifas_arriendo').select('*'),
       supabase.from('tarifas_comunas').select('*').order('comuna'),
       supabase.from('conductores').select('*').order('nombre'),
+      supabase.from('clientes').select('*').order('nombre'),
     ])
     if (c.data) setCamiones(c.data)
     if (r.data) setReservas(r.data)
@@ -66,6 +81,7 @@ export default function App() {
     if (ta.data) setTarifaArriendo(Object.fromEntries(ta.data.map(x => [x.tamano, x.valor])))
     if (tc.data) setTarifasComunas(tc.data)
     if (cd.data) setConductores(cd.data)
+    if (cl.data) setClientes(cl.data)
   }, [])
 
   useEffect(() => {
@@ -78,6 +94,7 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tarifas_arriendo' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tarifas_comunas' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conductores' }, loadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, loadAll)
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [perfil, loadAll])
@@ -117,6 +134,9 @@ export default function App() {
         {view === 'conductores' && (
           <Conductores conductores={conductores} isAdmin={isAdmin} toast={toast} reload={loadAll} />
         )}
+        {view === 'clientes' && (
+          <Clientes clientes={clientes} toast={toast} reload={loadAll} />
+        )}
         {view === 'tarifas' && (
           <Tarifas
             tarifaArriendo={tarifaArriendo} tarifasComunas={tarifasComunas}
@@ -124,7 +144,7 @@ export default function App() {
           />
         )}
         {view === 'cotizaciones' && (
-          <Cotizaciones cotizaciones={cotizaciones} tarifasComunas={tarifasComunas} tarifaArriendo={tarifaArriendo} perfil={perfil} toast={toast} reload={loadAll} />
+          <Cotizaciones cotizaciones={cotizaciones} tarifasComunas={tarifasComunas} tarifaArriendo={tarifaArriendo} clientes={clientes} perfil={perfil} toast={toast} reload={loadAll} />
         )}
       </main>
       <ReservaModal
@@ -145,6 +165,7 @@ function Sidebar({ perfil, view, setView }) {
     ['camiones', 'camiones', 'Camiones'],
     ['reservas', 'reservas', 'Reservas'],
     ['conductores', 'conductores', 'Conductores'],
+    ['clientes', 'clientes', 'Clientes'],
     ['tarifas', 'tarifas', 'Tarifas'],
     ['cotizaciones', 'cotizaciones', 'Cotizaciones'],
   ]
@@ -199,10 +220,11 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
   useEffect(() => { if (!qComuna && tarifasComunas[0]) setQComuna(tarifasComunas[0].comuna) }, [tarifasComunas]) // eslint-disable-line
 
   function runSearch() {
-    const truck = findAvailableTruck(camiones, reservas, qSize, qDate)
-    if (!truck) { setQResult({ ok: false }); return }
+    // Muestra TODOS los camiones disponibles de ese tamaño ese día, no solo el primero.
+    const trucks = camiones.filter(c => c.tamano === Number(qSize) && camionEstadoEnFecha(c, qDate, reservas) === 'Disponible')
+    if (!trucks.length) { setQResult({ ok: false }); return }
     const price = priceFor(tarifaArriendo, tarifasComunas, qSize, qComuna)
-    setQResult({ ok: true, truck, price })
+    setQResult({ ok: true, trucks, price })
   }
 
   const upcoming = reservas.filter(r => r.fecha >= today).sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 5)
@@ -312,9 +334,16 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
             )}
             {qResult && qResult.ok && (
               <div className="result-box">
-                <div className="result-title"><span className="ok-ic">✓</span>{qResult.truck.nombre} disponible</div>
+                <div className="result-title"><span className="ok-ic">✓</span>{qResult.trucks.length} camión{qResult.trucks.length === 1 ? '' : 'es'} de {qSize}m disponible{qResult.trucks.length === 1 ? '' : 's'}</div>
+                <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:10}}>
+                  {qResult.trucks.map(t => (
+                    <div key={t.id} style={{display:'flex',justifyContent:'space-between',fontSize:'12.5px'}}>
+                      <span><strong>{t.nombre}</strong></span>
+                      <span className="mono" style={{color:'var(--mute)'}}>{t.patente}</span>
+                    </div>
+                  ))}
+                </div>
                 <div className="result-grid">
-                  <div className="rl">Patente</div><div className="rv">{qResult.truck.patente}</div>
                   <div className="rl">Valor arriendo (por hora)</div><div className="rv">{fmtMoney(qResult.price.arriendo)}</div>
                   <div className="rl">Traslado a {qComuna}</div><div className="rv">{fmtMoney(qResult.price.traslado)}</div>
                 </div>
@@ -368,6 +397,12 @@ function Camiones({ camiones, isAdmin, toast, reload }) {
   const [rows, setRows] = useState(camiones)
   const [savingId, setSavingId] = useState(null)
   useEffect(() => setRows(camiones), [camiones])
+  useEffect(() => {
+    if (!showModal) return
+    function onKey(e) { if (e.key === 'Escape') setShowModal(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showModal])
 
   function editField(id, field, value) {
     setRows(rs => rs.map(r => r.id === id ? { ...r, [field]: value } : r))
@@ -462,6 +497,7 @@ function Camiones({ camiones, isAdmin, toast, reload }) {
       {showModal && (
         <div className="modal-bg show">
           <div className="modal">
+            <button className="modal-close" onClick={() => setShowModal(false)} aria-label="Cerrar">×</button>
             <h3>Nuevo camión</h3>
             <div className="msub">Se agrega a la flota y aparece de inmediato para todo el equipo.</div>
             <div className="f-group"><label>Nombre / identificador</label><input type="text" value={form.nombre} onChange={e => setForm({...form, nombre: e.target.value})} placeholder="Ej: Camión 13m – N°4" /></div>
@@ -567,6 +603,102 @@ function Conductores({ conductores, isAdmin, toast, reload }) {
 }
 
 // ============================================================
+// Base de clientes: cualquiera del equipo puede agregar/editar (no solo la administradora),
+// porque son quienes cotizan día a día y necesitan sumar clientes nuevos sobre la marcha.
+// Además, cada vez que se guarda una cotización, el cliente queda registrado aquí solo.
+function Clientes({ clientes, toast, reload }) {
+  const [rows, setRows] = useState(clientes)
+  const [savingId, setSavingId] = useState(null)
+  const [busca, setBusca] = useState('')
+  const [nuevo, setNuevo] = useState({ nombre: '', rut: '', direccion: '', correo: '', telefono: '' })
+  useEffect(() => setRows(clientes), [clientes])
+
+  function editField(id, field, value) {
+    setRows(rs => rs.map(r => r.id === id ? { ...r, [field]: value } : r))
+  }
+
+  async function saveRow(id) {
+    const row = rows.find(r => r.id === id)
+    if (!row.nombre.trim()) { toast('El nombre no puede quedar vacío'); return }
+    setSavingId(id)
+    const { error } = await supabase.from('clientes').update({
+      nombre: row.nombre.trim(), rut: row.rut || null, direccion: row.direccion || null,
+      correo: row.correo || null, telefono: row.telefono || null,
+    }).eq('id', id)
+    setSavingId(null)
+    if (error) { toast('No se pudo guardar'); return }
+    toast('Cliente actualizado'); reload()
+  }
+
+  async function addCliente() {
+    if (!nuevo.nombre.trim()) { toast('Escribe el nombre del cliente'); return }
+    const { error } = await supabase.from('clientes').insert({
+      nombre: nuevo.nombre.trim(), rut: nuevo.rut.trim() || null, direccion: nuevo.direccion.trim() || null,
+      correo: nuevo.correo.trim() || null, telefono: nuevo.telefono.trim() || null,
+    })
+    if (error) { toast('No se pudo agregar el cliente'); return }
+    setNuevo({ nombre: '', rut: '', direccion: '', correo: '', telefono: '' })
+    reload(); toast('Cliente agregado')
+  }
+
+  async function deleteCliente(c) {
+    if (!window.confirm(`¿Eliminar a "${c.nombre}" de la lista de clientes?`)) return
+    const { error } = await supabase.from('clientes').delete().eq('id', c.id)
+    if (error) { toast('No se pudo eliminar'); return }
+    toast('Cliente eliminado'); reload()
+  }
+
+  const visibles = busca.trim()
+    ? rows.filter(c => c.nombre.toLowerCase().includes(busca.trim().toLowerCase()))
+    : rows
+
+  return (
+    <>
+      <div className="toolbar">
+        <div><h1>Clientes</h1><div className="section-sub">Al cotizar, elige un cliente ya cargado aquí y sus datos se completan solos.</div></div>
+      </div>
+      <div className="card" style={{padding:0}}>
+        <div className="card-head" style={{padding:'18px 18px 0'}}>
+          <div className="f-group" style={{minWidth:220,marginBottom:0}}>
+            <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder={`Buscar cliente… (${rows.length})`} />
+          </div>
+        </div>
+        <table className="data">
+          <thead><tr><th>Nombre</th><th>RUT</th><th>Dirección</th><th>Correo</th><th>Teléfono</th><th></th></tr></thead>
+          <tbody>
+            {!visibles.length && <tr><td colSpan={6} style={{textAlign:'center',color:'var(--mute2)',padding:24}}>{rows.length ? 'No hay clientes que coincidan.' : 'Aún no hay clientes cargados. Se agregan solos al guardar una cotización, o puedes sumarlos aquí abajo.'}</td></tr>}
+            {visibles.map(c => (
+              <tr key={c.id}>
+                <td><input type="text" value={c.nombre} onChange={e => editField(c.id, 'nombre', e.target.value)} style={{width:170}} /></td>
+                <td><input type="text" value={c.rut || ''} onChange={e => editField(c.id, 'rut', formatRut(e.target.value))} style={{width:110}} /></td>
+                <td><input type="text" value={c.direccion || ''} onChange={e => editField(c.id, 'direccion', e.target.value)} style={{width:170}} /></td>
+                <td><input type="text" value={c.correo || ''} onChange={e => editField(c.id, 'correo', e.target.value)} style={{width:170}} /></td>
+                <td><input type="text" value={c.telefono || ''} onChange={e => editField(c.id, 'telefono', e.target.value)} placeholder="+56 9 ..." style={{width:130}} /></td>
+                <td style={{display:'flex',gap:6}}>
+                  <button className="btn-dark btn-sm" disabled={savingId===c.id} onClick={() => saveRow(c.id)}>{savingId===c.id ? 'Guardando…' : 'Guardar'}</button>
+                  <button className="btn-danger btn-sm" onClick={() => deleteCliente(c)}>Eliminar</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{padding:16,borderTop:'1px solid var(--border)'}}>
+          <div className="section-sub" style={{margin:'0 0 10px'}}>Agregar un cliente nuevo</div>
+          <div className="quick-row" style={{gridTemplateColumns:'1.2fr 1fr 1.3fr 1.3fr 1fr auto'}}>
+            <div className="f-group"><label>Nombre</label><input type="text" value={nuevo.nombre} onChange={e => setNuevo({...nuevo, nombre: e.target.value})} placeholder="Nombre / empresa" /></div>
+            <div className="f-group"><label>RUT</label><input type="text" value={nuevo.rut} onChange={e => setNuevo({...nuevo, rut: formatRut(e.target.value)})} /></div>
+            <div className="f-group"><label>Dirección</label><input type="text" value={nuevo.direccion} onChange={e => setNuevo({...nuevo, direccion: e.target.value})} /></div>
+            <div className="f-group"><label>Correo</label><input type="text" value={nuevo.correo} onChange={e => setNuevo({...nuevo, correo: e.target.value})} /></div>
+            <div className="f-group"><label>Teléfono</label><input type="text" value={nuevo.telefono} onChange={e => setNuevo({...nuevo, telefono: e.target.value})} placeholder="+56 9 ..." /></div>
+            <button className="btn-dark" onClick={addCliente}>Agregar</button>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ============================================================
 function Reservas({ camiones, reservas, conductores, tarifasComunas, perfil, toast, reload, openReserva, openReservaEdit }) {
   const today = isoDate(new Date())
   const sorted = [...reservas].sort((a, b) => b.fecha.localeCompare(a.fecha))
@@ -619,7 +751,7 @@ function Reservas({ camiones, reservas, conductores, tarifasComunas, perfil, toa
 // ============================================================
 function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, perfil, toast, reload, initialCamionId, initialFecha, editReserva }) {
   const today = isoDate(new Date())
-  const [form, setForm] = useState({ camionId: '', cliente: '', fecha: today, hasta: '', hora: '', comuna: '', direccion: '', estado: 'Reservado', conductorId: '', descripcion: '' })
+  const [form, setForm] = useState({ camionId: '', cliente: '', contacto: '', tipoTrabajo: '', fecha: today, hasta: '', hora: '', comuna: '', direccion: '', estado: 'Reservado', conductorId: '', descripcion: '' })
   const isEdit = !!editReserva
 
   useEffect(() => {
@@ -628,6 +760,8 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
       setForm({
         camionId: editReserva.camion_id || camiones[0]?.id || '',
         cliente: editReserva.cliente || '',
+        contacto: editReserva.contacto || '',
+        tipoTrabajo: editReserva.tipo_trabajo || '',
         fecha: editReserva.fecha || today,
         hasta: editReserva.fecha || today,
         hora: editReserva.hora ? editReserva.hora.slice(0,5) : '',
@@ -643,11 +777,18 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
         camionId: initialCamionId || camiones[0]?.id || '',
         fecha: initialFecha || today,
         hasta: initialFecha || today,
-        hora: '', cliente: '', direccion: '', conductorId: '', descripcion: '', estado: 'Reservado',
+        hora: '', cliente: '', contacto: '', tipoTrabajo: '', direccion: '', conductorId: '', descripcion: '', estado: 'Reservado',
         comuna: f.comuna || tarifasComunas[0]?.comuna || '',
       }))
     }
   }, [show, initialCamionId, initialFecha, editReserva]) // eslint-disable-line
+
+  useEffect(() => {
+    if (!show) return
+    function onKey(e) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [show]) // eslint-disable-line
 
   if (!show) return null
 
@@ -674,7 +815,8 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
       dias.push(isoDate(d))
     }
     const base = {
-      camion_id: form.camionId, cliente: form.cliente, hora: form.hora || null,
+      camion_id: form.camionId, cliente: form.cliente, contacto: form.contacto || null,
+      tipo_trabajo: form.tipoTrabajo || null, hora: form.hora || null,
       comuna: form.comuna, direccion: form.direccion, estado: form.estado,
       conductor_id: form.conductorId || null, descripcion: form.descripcion || null,
     }
@@ -702,6 +844,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
   return (
     <div className="modal-bg show">
       <div className="modal">
+        <button className="modal-close" onClick={onClose} aria-label="Cerrar">×</button>
         <h3>{isEdit ? 'Editar reserva' : 'Nueva reserva'}</h3>
         <div className="msub">{camionSel ? `${camionSel.nombre} · ${new Date(form.fecha + 'T00:00:00').toLocaleDateString('es-CL')}` : 'Elige un camión disponible en la fecha indicada.'}</div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
@@ -723,7 +866,16 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, pe
         {esMantencion && <div className="section-sub" style={{margin:'-6px 0 12px'}}>El camión quedará en mantención en el calendario desde la fecha "Desde" hasta la fecha "Hasta".</div>}
         {!esMantencion && <>
           <div className="f-group"><label>Cliente</label><input type="text" value={form.cliente} onChange={e => setForm({...form, cliente: e.target.value})} placeholder="Nombre cliente / empresa" /></div>
-          <div className="f-group"><label>Hora</label><input type="time" value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} /></div>
+          <div className="f-group"><label>Contacto del cliente</label><input type="text" value={form.contacto} onChange={e => setForm({...form, contacto: e.target.value})} placeholder="Nombre y/o teléfono de contacto" /></div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div className="f-group"><label>Tipo de trabajo</label>
+              <input type="text" list="dl-tipo-trabajo" value={form.tipoTrabajo} onChange={e => setForm({...form, tipoTrabajo: e.target.value})} placeholder="Escribe o elige…" autoComplete="off" />
+              <datalist id="dl-tipo-trabajo">
+                {TIPOS_TRABAJO.map(t => <option key={t} value={t} />)}
+              </datalist>
+            </div>
+            <div className="f-group"><label>Hora</label><input type="time" value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} /></div>
+          </div>
           <div className="f-group"><label>Comuna</label>
             <input type="text" list="dl-comunas-reserva" value={form.comuna} onChange={e => setForm({...form, comuna: e.target.value})} placeholder="Escribe para buscar…" autoComplete="off" />
             <datalist id="dl-comunas-reserva">
@@ -1121,7 +1273,7 @@ async function generarPdfCotizacion(q, nombreArchivo) {
   doc.save(`${nombre.replace(/\.pdf$/i, '')}.pdf`)
 }
 
-function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, perfil, toast, reload }) {
+function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, perfil, toast, reload }) {
   const today = isoDate(new Date())
   const nextNumero = cotizaciones.reduce((max, c) => Math.max(max, c.numero || 0), 0) + 1
 
@@ -1136,6 +1288,17 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, perfil, to
   const [clienteRut, setClienteRut] = useState('')
   const [clienteDireccion, setClienteDireccion] = useState('')
   const [clienteCorreo, setClienteCorreo] = useState('')
+  // Si el nombre escrito coincide con un cliente ya cargado (elegido de la lista de sugerencias),
+  // se completan RUT/dirección/correo solos — pero quedan editables igual que siempre.
+  function onChangeCliente(valor) {
+    setCliente(valor)
+    const match = clientes.find(c => c.nombre.trim().toLowerCase() === valor.trim().toLowerCase())
+    if (match) {
+      if (match.rut) setClienteRut(match.rut)
+      if (match.direccion) setClienteDireccion(match.direccion)
+      if (match.correo) setClienteCorreo(match.correo)
+    }
+  }
   const [fecha, setFecha] = useState(today)
   const [items, setItems] = useState([nuevoItem()])
   const [aplicaDescuento, setAplicaDescuento] = useState(false)
@@ -1208,6 +1371,28 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, perfil, to
     setIncluirTraslado(true); setTrasladoCantidad(1); setTrasladoValorEditado(false); setTrasladoTamano('13'); setTrasladoDescEditada(false)
   }
 
+  // Guarda o enriquece el cliente en la base de clientes, para que la próxima vez que se
+  // cotice a esta misma persona/empresa sus datos aparezcan solos. Es "best effort": si falla,
+  // no interrumpe el guardado de la cotización (ya se guardó lo importante).
+  async function guardarClienteSiCorresponde() {
+    const nombreTrim = cliente.trim()
+    if (!nombreTrim) return
+    try {
+      const existente = clientes.find(c => c.nombre.trim().toLowerCase() === nombreTrim.toLowerCase())
+      if (existente) {
+        const cambios = {}
+        if (!existente.rut && clienteRut) cambios.rut = clienteRut
+        if (!existente.direccion && clienteDireccion) cambios.direccion = clienteDireccion
+        if (!existente.correo && clienteCorreo) cambios.correo = clienteCorreo
+        if (Object.keys(cambios).length) await supabase.from('clientes').update(cambios).eq('id', existente.id)
+      } else {
+        await supabase.from('clientes').insert({
+          nombre: nombreTrim, rut: clienteRut || null, direccion: clienteDireccion || null, correo: clienteCorreo || null,
+        })
+      }
+    } catch { /* no bloquea el flujo de la cotización */ }
+  }
+
   async function guardarYDescargar() {
     if (!cliente.trim()) { toast('Escribe el nombre del cliente'); return }
     if (!items.length || items.some(it => !it.descripcion.trim())) { toast('Completa la descripción de cada ítem'); return }
@@ -1217,7 +1402,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, perfil, to
       numero: Number(numero), cliente: cliente.trim(), cliente_rut: clienteRut || null,
       cliente_direccion: clienteDireccion || null, cliente_correo: clienteCorreo || null,
       fecha, items: itemsFinal, descuento_pct: aplicaDescuento ? Number(descuentoPct) || 0 : 0,
-      subtotal, neto, iva, total, condiciones, estado: 'Pendiente', creado_por: perfil.id,
+      subtotal, neto, iva, total, condiciones, estado: 'Pendiente', creado_por: perfil.id, creado_por_nombre: perfil.nombre,
     }
     const { error } = await supabase.from('cotizaciones').insert(payload)
     setGuardando(false)
@@ -1225,6 +1410,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, perfil, to
       toast(error.code === '23505' ? 'Ese número de cotización ya existe, cámbialo' : 'No se pudo guardar la cotización')
       return
     }
+    await guardarClienteSiCorresponde()
     await generarPdfCotizacion(payload, nombreArchivo)
     resetForm(); reload(); toast('Cotización guardada y PDF generado')
   }
@@ -1259,7 +1445,12 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, perfil, to
         <div className="card-head"><h2>Nueva cotización</h2></div>
         <div className="quick-row" style={{gridTemplateColumns:'0.7fr 1.3fr 1fr 1fr 1fr'}}>
           <div className="f-group"><label>N° de cotización</label><input type="text" inputMode="numeric" value={numero} onChange={e => onChangeNumero(e.target.value)} /></div>
-          <div className="f-group"><label>Cliente</label><input type="text" value={cliente} onChange={e => setCliente(e.target.value)} placeholder="Nombre cliente / empresa" /></div>
+          <div className="f-group"><label>Cliente</label>
+            <input type="text" list="dl-clientes" value={cliente} onChange={e => onChangeCliente(e.target.value)} placeholder="Nombre cliente / empresa" autoComplete="off" />
+            <datalist id="dl-clientes">
+              {clientes.map(c => <option key={c.id} value={c.nombre} />)}
+            </datalist>
+          </div>
           <div className="f-group"><label>RUT</label><input type="text" value={clienteRut} onChange={e => setClienteRut(formatRut(e.target.value))} placeholder="Solo números, el formato se pone solo" /></div>
           <div className="f-group"><label>Dirección</label><input type="text" value={clienteDireccion} onChange={e => setClienteDireccion(e.target.value)} placeholder="Calle, número, comuna" /></div>
           <div className="f-group"><label>Correo</label><input type="text" value={clienteCorreo} onChange={e => setClienteCorreo(e.target.value)} placeholder="correo@cliente.cl" /></div>
@@ -1373,7 +1564,10 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, perfil, to
                   <td><input type="checkbox" checked={seleccionadas.includes(q.id)} onChange={() => toggleSeleccionada(q.id)} /></td>
                 )}
                 <td className="mono">{String(q.numero || 0).padStart(6, '0')}</td>
-                <td><strong>{q.cliente}</strong></td>
+                <td>
+                  <strong>{q.cliente}</strong>
+                  {q.creado_por_nombre && <div style={{fontSize:11,color:'var(--mute2)',marginTop:2}}>Emitida por: {q.creado_por_nombre}</div>}
+                </td>
                 <td className="mono">{new Date(q.fecha + 'T00:00:00').toLocaleDateString('es-CL')}</td>
                 <td className="mono"><strong>{fmtMoney(q.total)}</strong></td>
                 <td><span className={`tag ${q.estado === 'Confirmada' ? 'st-trabajo' : 'st-pendiente'}`}>{q.estado}</span></td>
