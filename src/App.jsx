@@ -12,6 +12,16 @@ const Mark = () => (
   <div className="mark-plate"><img src="/logo.png" alt="Ilumsa" className="mark-img" /></div>
 )
 
+// Evita que el modal se cierre y borre lo escrito cuando el usuario hace click y arrastra
+// (por ejemplo, seleccionando texto) desde dentro del modal hacia afuera: solo cierra si el
+// mousedown Y el click ocurrieron ambos directamente sobre el fondo, no sobre el contenido.
+function overlayMouseDown(e) { if (e.target === e.currentTarget) e.currentTarget.dataset.downBg = '1' }
+function overlayClick(e, closeFn) {
+  const wasDownOnBg = e.currentTarget.dataset.downBg === '1'
+  e.currentTarget.dataset.downBg = ''
+  if (wasDownOnBg && e.target === e.currentTarget) closeFn()
+}
+
 // Sugerencias para "Tipo de trabajo" en el formulario de reservas — el campo queda libre
 // para escribir cualquier cosa, esto solo ayuda a elegir rápido los más comunes.
 const TIPOS_TRABAJO = [
@@ -182,7 +192,7 @@ function ConfirmModal({ state, onResult }) {
 
   if (!state) return null
   return (
-    <div className="modal-bg show" onClick={() => onResult(false)}>
+    <div className="modal-bg show" onMouseDown={overlayMouseDown} onClick={e => overlayClick(e, () => onResult(false))}>
       <div className="modal confirm-modal" onClick={e => e.stopPropagation()}>
         <div className="confirm-icon">{state.danger === false ? 'i' : '!'}</div>
         <div className="confirm-msg">{state.message}</div>
@@ -265,6 +275,8 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
 
   const upcoming = reservas.filter(r => r.fecha >= today).sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 5)
   const alerts = camiones.filter(c => c.estado_general === 'Mantención' || c.estado_general === 'Fuera de Servicio')
+  const thisWeekStart = startOfWorkWeek(new Date())
+  const [expandedSvc, setExpandedSvc] = useState(null)
 
   return (
     <>
@@ -289,7 +301,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
             <div className="card-head">
               <h2>Calendario de camiones</h2>
               <div className="week-nav">
-                <button onClick={() => setCalWeekStart(addDays(calWeekStart, -7))}>‹</button>
+                <button onClick={() => setCalWeekStart(addDays(calWeekStart, -7))} disabled={calWeekStart <= thisWeekStart} title={calWeekStart <= thisWeekStart ? 'No se puede ver semanas anteriores a la actual' : ''}>‹</button>
                 <span className="range">{days[0].getDate()} – {days[6].getDate()} de {MESES[days[6].getMonth()].charAt(0) + MESES[days[6].getMonth()].slice(1).toLowerCase()}, {days[6].getFullYear()}</span>
                 <button onClick={() => setCalWeekStart(addDays(calWeekStart, 7))}>›</button>
                 <button className="today-btn" onClick={() => setCalWeekStart(startOfWorkWeek(new Date()))}>Hoy</button>
@@ -297,7 +309,10 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
             </div>
             <div className="cal-wrap">
               <table className="calendar">
-                <thead><tr><th>Camión</th>{days.map(d => <th key={+d}>{DIAS[d.getDay()]} {d.getDate()}</th>)}</tr></thead>
+                <thead><tr><th>Camión</th>{days.map(d => {
+                  const dIso = isoDate(d)
+                  return <th key={+d}>{DIAS[d.getDay()]} {d.getDate()}{dIso === today && <span className="today-dot" title="Hoy"></span>}</th>
+                })}</tr></thead>
                 <tbody>
                   {camiones.map(c => (
                     <tr key={c.id}>
@@ -317,12 +332,15 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
                                 className={`badge small-info ${cls} badge-clickable`}
                                 title="Clic para ver / editar esta reserva"
                                 onClick={() => r && openReservaEdit(r)}
-                              >{est}<span className="b-sub">{r?.cliente}</span></div>
+                              >{est}<span className="b-sub">{r?.empresa || r?.cliente}</span></div>
                             </td>
                           )
                         }
                         if (est === 'Mantención' || est === 'Fuera de Servicio') {
                           return <td key={+d}><div className={`badge small-info ${cls}`}>{est}<span className="b-sub">{est === 'Mantención' && c.hasta ? 'Hasta ' + c.hasta.slice(8,10)+'/'+c.hasta.slice(5,7) : ''}</span></div></td>
+                        }
+                        if (dIso < today) {
+                          return <td key={+d}><div className={`badge ${cls}`} style={{opacity:.5,cursor:'default'}} title="No se puede agendar en un día anterior">{est}</div></td>
                         }
                         return (
                           <td key={+d}>
@@ -397,13 +415,23 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
             {upcoming.map(r => {
               const cam = camiones.find(c => c.id === r.camion_id)
               const d = new Date(r.fecha + 'T00:00:00')
+              const isOpen = expandedSvc === r.id
               return (
-                <div className="svc-item" key={r.id}>
+                <div className="svc-item svc-clickable" key={r.id} onClick={() => setExpandedSvc(isOpen ? null : r.id)} title="Clic para ver todos los detalles">
                   <div className="svc-date"><div className="mo">{MESES[d.getMonth()]}</div><div className="dy">{d.getDate()}</div></div>
                   <div className="svc-body">
-                    <div className="t1">{r.cliente}</div>
+                    <div className="t1">{r.empresa || r.cliente}</div>
                     <div className="t2">{cam?.nombre || '—'}</div>
-                    <div className="t3">{r.direccion}, {r.comuna}</div>
+                    {isOpen && (
+                      <div className="svc-detail">
+                        {r.empresa && r.cliente && <div className="t3">Cliente: {r.cliente}</div>}
+                        {r.contacto && <div className="t3">Contacto: {r.contacto}</div>}
+                        {r.tipo_trabajo && <div className="t3">{r.tipo_trabajo}</div>}
+                        <div className="t3">{r.direccion}{r.comuna ? ', ' + r.comuna : ''}</div>
+                        {r.hora && <div className="t3">Hora: {r.hora.slice(0,5)}</div>}
+                        {r.descripcion && <div className="t3">{r.descripcion}</div>}
+                      </div>
+                    )}
                   </div>
                   <span className={`svc-tag tag ${r.estado === 'En Trabajo' ? 'st-trabajo' : 'st-reservado'}`}>{r.estado}</span>
                 </div>
@@ -531,7 +559,7 @@ function Camiones({ camiones, isAdmin, toast, reload, confirm }) {
       </div>
 
       {showModal && (
-        <div className="modal-bg show" onClick={() => setShowModal(false)}>
+        <div className="modal-bg show" onMouseDown={overlayMouseDown} onClick={e => overlayClick(e, () => setShowModal(false))}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <button className="modal-close" onClick={() => setShowModal(false)} aria-label="Cerrar">×</button>
             <h3>Nuevo camión</h3>
@@ -857,6 +885,35 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
     }))
   }
 
+  // Guarda o enriquece el cliente en la base de clientes, para que la próxima vez que se
+  // reserve para esta misma persona/empresa sus datos aparezcan solos. Es "best effort": si
+  // falla, no interrumpe el guardado de la reserva (ya se guardó lo importante).
+  async function guardarClienteSiCorresponde() {
+    const empresaTrim = form.empresa.trim()
+    const nombreTrim = form.cliente.trim()
+    if (!empresaTrim && !nombreTrim) return
+    try {
+      const existente = (clientes || []).find(c =>
+        (empresaTrim && (c.empresa || '').trim().toLowerCase() === empresaTrim.toLowerCase()) ||
+        (nombreTrim && c.nombre.trim().toLowerCase() === nombreTrim.toLowerCase())
+      )
+      if (existente) {
+        const cambios = {}
+        if (!existente.empresa && empresaTrim) cambios.empresa = empresaTrim
+        if (!existente.telefono && form.contacto) cambios.telefono = form.contacto
+        if (!existente.direccion && form.direccion) cambios.direccion = form.direccion
+        if (Object.keys(cambios).length) await supabase.from('clientes').update(cambios).eq('id', existente.id)
+      } else {
+        const etiqueta = nombreTrim || empresaTrim
+        if (await confirm(`"${etiqueta}" es un cliente nuevo. ¿Quieres guardarlo en la lista de clientes para completar sus datos automáticamente la próxima vez?`)) {
+          await supabase.from('clientes').insert({
+            empresa: empresaTrim || null, nombre: nombreTrim || empresaTrim, telefono: form.contacto || null, direccion: form.direccion || null,
+          })
+        }
+      }
+    } catch { /* no bloquea el flujo de la reserva */ }
+  }
+
   async function save() {
     if (!form.camionId || !form.fecha) { toast('Completa el camión y la fecha'); return }
     const hastaFinal = form.hasta && form.hasta >= form.fecha ? form.hasta : form.fecha
@@ -891,6 +948,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
       const { error } = await supabase.from('reservas').insert(dias.map(fecha => ({ ...base, fecha, valor: 0, creado_por: perfil.id })))
       if (error) { toast('No se pudo guardar la reserva'); return }
     }
+    await guardarClienteSiCorresponde()
     reload(); toast(isEdit ? 'Reserva actualizada' : 'Reserva guardada'); onClose()
   }
 
@@ -905,7 +963,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
   const camionSel = camiones.find(c => c.id === form.camionId)
 
   return (
-    <div className="modal-bg show" onClick={onClose}>
+    <div className="modal-bg show" onMouseDown={overlayMouseDown} onClick={e => overlayClick(e, onClose)}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose} aria-label="Cerrar">×</button>
         <h3>{isEdit ? 'Editar reserva' : 'Nueva reserva'}</h3>
@@ -1050,7 +1108,7 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload, confi
             ))}
           </tbody>
         </table>
-        {isAdmin && <div style={{marginTop:12}}><button className="btn-dark btn-sm" onClick={saveAll}>Guardar arriendo</button></div>}
+        {isAdmin && <div style={{marginTop:12}}><button className="btn-dark btn-sm" onClick={saveAll}>Guardar cambios</button></div>}
       </div>
       <div className="card" style={{padding:0}}>
         <div className="card-head" style={{padding:'18px 18px 0'}}>
