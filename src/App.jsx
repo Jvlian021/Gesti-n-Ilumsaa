@@ -1243,7 +1243,7 @@ function parseHtmlToBlocks(html) {
 function renderConditionBlocks(doc, blocks, marginL, contentW, startY, F, NAVY, opts = {}) {
   const { scale = 1, draw = true } = opts
   let cy = startY
-  const lineH = 11 * scale
+  const lineH = 10.2 * scale
   blocks.forEach(block => {
     const words = []
     block.forEach(run => {
@@ -1252,10 +1252,10 @@ function renderConditionBlocks(doc, blocks, marginL, contentW, startY, F, NAVY, 
         words.push({ text: part, bold: run.bold, color: run.color })
       })
     })
-    if (!words.length) { cy += 3 * scale; return }
+    if (!words.length) { cy += 2.5 * scale; return }
     const allBold = words.every(w => w.bold)
-    if (allBold) cy += 7 * scale
-    const fontSize = (allBold ? 9 : 8.5) * scale
+    if (allBold) cy += 6 * scale
+    const fontSize = (allBold ? 8.8 : 8.2) * scale
     doc.setFontSize(fontSize)
     const spaceW = doc.getTextWidth(' ')
     let line = []
@@ -1285,7 +1285,7 @@ function renderConditionBlocks(doc, blocks, marginL, contentW, startY, F, NAVY, 
       lineWidth += (line.length > 1 ? spaceW : 0) + wWidth
     })
     flushLine()
-    if (!allBold) cy += 2 * scale
+    if (!allBold) cy += 1.5 * scale
   })
   return cy
 }
@@ -1296,7 +1296,7 @@ async function generarPdfCotizacion(q, nombreArchivo) {
   const F = await registerFonts(doc)
   const pageW = doc.internal.pageSize.getWidth()
   const pageH = doc.internal.pageSize.getHeight()
-  const marginL = 40, marginR = 40, marginB = 34
+  const marginL = 36, marginR = 36, marginB = 30
   const contentW = pageW - marginL - marginR
   let y = 42
 
@@ -1321,9 +1321,9 @@ async function generarPdfCotizacion(q, nombreArchivo) {
   doc.text(`Rut: ${DATOS_EMPRESA.rut} / ${DATOS_EMPRESA.direccion}`, headCenterX, y + 44, { align: 'center' })
   doc.text(`Teléfono: ${DATOS_EMPRESA.telefono}    Web: ${DATOS_EMPRESA.web}    Correo: ${DATOS_EMPRESA.correo}`, headCenterX, y + 57, { align: 'center' })
 
-  y += 79
+  y += 70
   doc.setDrawColor(0); doc.setLineWidth(0.75); doc.line(marginL, y, pageW - marginR, y)
-  y += 20
+  y += 16
 
   doc.setFont(F.slab, 'bold'); doc.setFontSize(9.5); doc.setTextColor(...NAVY)
   doc.text('Cliente:', marginL, y)
@@ -1331,17 +1331,17 @@ async function generarPdfCotizacion(q, nombreArchivo) {
   doc.text(q.cliente || '—', marginL + 48, y)
   doc.setTextColor(0, 0, 0)
   doc.text(`N°.    ${q.numero}`, pageW - marginR - 140, y)
-  y += 15
+  y += 13
   doc.setFont(F.serif, 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(9)
   if (q.cliente_rut) doc.text(q.cliente_rut, marginL + 48, y)
   doc.setFont(F.serif, 'bold')
   doc.text(new Date(q.fecha + 'T00:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase(), pageW - marginR - 140, y)
   doc.setFont(F.serif, 'normal')
-  y += 15
-  if (q.cliente_direccion) { doc.text(q.cliente_direccion, marginL + 48, y); y += 15 }
-  if (q.cliente_correo) { doc.text(q.cliente_correo, marginL + 48, y); y += 15 }
+  y += 13
+  if (q.cliente_direccion) { doc.text(q.cliente_direccion, marginL + 48, y); y += 13 }
+  if (q.cliente_correo) { doc.text(q.cliente_correo, marginL + 48, y); y += 13 }
 
-  y += 8
+  y += 6
   autoTable(doc, {
     startY: y,
     head: [['ÍTEM', 'DESCRIPCIÓN', 'UNIDAD', 'CANTIDAD', 'VALOR UN', 'VALOR TOTAL']],
@@ -1350,7 +1350,7 @@ async function generarPdfCotizacion(q, nombreArchivo) {
       fmtMoney(it.valorUnit), fmtMoney((Number(it.cantidad) || 0) * (Number(it.valorUnit) || 0)),
     ]),
     theme: 'plain',
-    styles: { font: F.serif, fontStyle: 'normal', fontSize: 9.5, cellPadding: { top: 6, bottom: 6, left: 3, right: 3 }, lineColor: [90, 90, 90], lineWidth: { bottom: 0.5 } },
+    styles: { font: F.serif, fontStyle: 'normal', fontSize: 9.5, cellPadding: { top: 4, bottom: 4, left: 3, right: 3 }, lineColor: [90, 90, 90], lineWidth: { bottom: 0.5 } },
     headStyles: { font: F.slab, fontStyle: 'bold', fontSize: 9, textColor: NAVY, lineColor: [0, 0, 0], lineWidth: { bottom: 0.75 } },
     columnStyles: {
       0: { cellWidth: 34, halign: 'center', font: F.serif, fontStyle: 'bold', textColor: NAVY },
@@ -1368,40 +1368,51 @@ async function generarPdfCotizacion(q, nombreArchivo) {
   const totalNetoIdx = totalRows.length
   totalRows.push(['TOTAL NETO', fmtMoney(q.neto)], ['IVA (19%)', fmtMoney(q.iva)], ['TOTAL', fmtMoney(q.total)])
 
-  const totalsW = 220
+  // Datos bancarios (izquierda) y el resumen de totales (derecha) van uno al lado del otro,
+  // igual que en la cotización de referencia — así se ahorra bastante espacio vertical, que
+  // es clave para que las condiciones comerciales alcancen a entrar en la misma página.
+  const afterItemsY = doc.lastAutoTable.finalY + 14
+  const totalsW = 200
   autoTable(doc, {
-    startY: doc.lastAutoTable.finalY + 20,
+    startY: afterItemsY,
     body: totalRows,
     theme: 'plain',
-    styles: { fontStyle: 'bold', fontSize: 9, cellPadding: 6, lineColor: [0, 0, 0], lineWidth: { bottom: 0.5 } },
+    styles: { fontStyle: 'bold', fontSize: 8.5, cellPadding: 4, lineColor: [0, 0, 0], lineWidth: { bottom: 0.5 } },
     columnStyles: { 0: { font: F.slab, textColor: NAVY, cellWidth: totalsW * 0.55 }, 1: { font: F.serif, textColor: 0, halign: 'right', cellWidth: totalsW * 0.45 } },
     margin: { left: pageW - marginR - totalsW },
     didParseCell: (data) => { if (data.row.index === totalNetoIdx) data.cell.styles.fillColor = GRAY_FILL },
   })
+  const totalsFinalY = doc.lastAutoTable.finalY
 
-  let by = doc.lastAutoTable.finalY + 18
   doc.setFont(F.slab, 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
   const banco = ['Datos Bancarios:', ...DATOS_BANCARIOS]
-  banco.forEach((line, i) => doc.text(line, marginL, by + i * 12.5))
+  banco.forEach((line, i) => doc.text(line, marginL, afterItemsY + 10 + i * 11.5))
+  const bancoFinalY = afterItemsY + 10 + banco.length * 11.5
 
-  let cy = by + banco.length * 12.5 + 20
+  let cy = Math.max(totalsFinalY, bancoFinalY) + 16
   if (isHtmlContent(q.condiciones)) {
     // Texto enriquecido guardado desde el mini-editor (negrita/color). Para que todo quede
-    // dentro de una sola página (como en el formato original), primero se mide cuánto ocuparía
-    // el texto y, si no entra completo, se va reduciendo el tamaño de letra/espaciado en pasos
-    // hasta que quepa — así no se corta contenido ni se pasa a una segunda página, salvo que el
-    // texto sea tan largo que ni con la letra más chica alcance (caso muy poco común).
+    // dentro de una sola página (como en el formato original) primero se mide cuánto ocuparía
+    // el texto y, si no entra completo, se reduce un poco el tamaño de letra — pero solo hasta
+    // un mínimo cómodo de leer (nunca queda "microscópico"). Si el texto es tan largo que ni así
+    // alcanza, se continúa en una segunda página completa (con tamaño normal) en vez de achicar
+    // la letra hasta hacerla ilegible.
     const blocks = parseHtmlToBlocks(q.condiciones)
-    const scales = [1, 0.94, 0.88, 0.82, 0.76, 0.7, 0.64, 0.58]
-    let chosen = scales[scales.length - 1]
-    const availableH = pageH - marginB - cy
-    for (const s of scales) {
-      const h = renderConditionBlocks(doc, blocks, marginL, contentW, 0, F, NAVY, { scale: s, draw: false })
-      if (h <= availableH) { chosen = s; break }
+    const scales = [1, 0.95, 0.9, 0.85, 0.8]
+    function bestScale(availableH) {
+      for (const s of scales) {
+        const h = renderConditionBlocks(doc, blocks, marginL, contentW, 0, F, NAVY, { scale: s, draw: false })
+        if (h <= availableH) return s
+      }
+      return null
     }
-    const neededH = renderConditionBlocks(doc, blocks, marginL, contentW, 0, F, NAVY, { scale: chosen, draw: false })
-    if (neededH > pageH - marginB - cy) { doc.addPage(); cy = 42 }
-    cy = renderConditionBlocks(doc, blocks, marginL, contentW, cy, F, NAVY, { scale: chosen, draw: true })
+    let scale = bestScale(pageH - marginB - cy)
+    if (scale == null) {
+      doc.addPage()
+      cy = 42
+      scale = bestScale(pageH - marginB - cy) || 0.8
+    }
+    cy = renderConditionBlocks(doc, blocks, marginL, contentW, cy, F, NAVY, { scale, draw: true })
   } else {
     // Cotizaciones guardadas antes de este cambio (texto plano): se mantiene el formato anterior,
     // donde las líneas que terminan en ":" se pintan como título en negrita.
