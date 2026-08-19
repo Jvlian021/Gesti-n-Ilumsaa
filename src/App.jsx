@@ -288,7 +288,6 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
 
   const upcoming = reservas.filter(r => r.fecha >= today).sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 5)
   const alerts = camiones.filter(c => c.estado_general === 'Mantención' || c.estado_general === 'Fuera de Servicio')
-  const thisWeekStart = todayMidnight()
   const [expandedSvc, setExpandedSvc] = useState(null)
   const [showHistorial, setShowHistorial] = useState(false)
 
@@ -319,7 +318,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
             <div className="card-head">
               <h2>Calendario de camiones</h2>
               <div className="week-nav">
-                <button onClick={() => setCalWeekStart(addDays(calWeekStart, -7))} disabled={calWeekStart <= thisWeekStart} title={calWeekStart <= thisWeekStart ? 'No se puede ver semanas anteriores a la actual' : ''}>‹</button>
+                <button onClick={() => setCalWeekStart(addDays(calWeekStart, -7))} title="Ver la semana anterior">‹</button>
                 <span className="range">{days[0].getDate()} – {days[6].getDate()} de {MESES[days[6].getMonth()].charAt(0) + MESES[days[6].getMonth()].slice(1).toLowerCase()}, {days[6].getFullYear()}</span>
                 <button onClick={() => setCalWeekStart(addDays(calWeekStart, 7))}>›</button>
                 <button className="today-btn" onClick={() => setCalWeekStart(todayMidnight())}>Hoy</button>
@@ -336,7 +335,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
                     <tr key={c.id}>
                       <td className="truck-cell">
                         <div className="tname">{c.nombre}</div>
-                        <div className="tpat">Patente: {c.patente} · Aislado: {c.aislado}</div>
+                        <div className="tpat">Patente: {c.patente}</div>
                       </td>
                       {days.map(d => {
                         const dIso = isoDate(d)
@@ -526,8 +525,8 @@ function HistorialModal({ show, onClose, reservas, camiones, openReservaEdit }) 
             return (
               <div
                 key={i}
-                className={`hist-cell ${enMes ? '' : 'muted'} ${dIso === today ? 'is-today' : ''} ${diaSel === dIso ? 'is-sel' : ''} ${items.length ? 'has-items' : ''}`}
-                onClick={() => items.length && setDiaSel(dIso === diaSel ? null : dIso)}
+                className={`hist-cell is-clickable ${enMes ? '' : 'muted'} ${dIso === today ? 'is-today' : ''} ${diaSel === dIso ? 'is-sel' : ''} ${items.length ? 'has-items' : ''}`}
+                onClick={() => setDiaSel(dIso === diaSel ? null : dIso)}
               >
                 <div className="hist-daynum">{d.getDate()}</div>
                 {items.length > 0 && <div className="hist-dot"></div>}
