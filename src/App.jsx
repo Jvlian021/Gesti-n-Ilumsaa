@@ -54,7 +54,7 @@ export default function App() {
   const [perfil, setPerfil] = useState(null)
   const [view, setView] = useState('dashboard')
   const [toastMsg, setToastMsg] = useState('')
-  const [calWeekStart, setCalWeekStart] = useState(todayMidnight())
+  const [calWeekStart, setCalWeekStart] = useState(startOfWorkWeek(new Date()))
   const [reservaModal, setReservaModal] = useState({ show: false, camionId: '', fecha: '', editReserva: null, prefill: null })
   const [confirmState, setConfirmState] = useState(null)
 
@@ -291,6 +291,23 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
   const [expandedSvc, setExpandedSvc] = useState(null)
   const [showHistorial, setShowHistorial] = useState(false)
 
+  // La semana se sigue mostrando completa (Lun–Dom, incluye días pasados), pero cada vez que
+  // cambia la semana visible desplazamos el scroll horizontal para que la columna de hoy quede
+  // pegada a la izquierda — así no hay que arrastrar hacia los lados para verla.
+  const todayColRef = useRef(null)
+  useEffect(() => {
+    const el = todayColRef.current
+    const wrap = el?.closest('.cal-wrap')
+    if (!el || !wrap) return
+    // La primera columna (nombre del camión) queda fija a la izquierda (sticky), así que no
+    // basta con "scrollIntoView" — hay que dejar la columna de hoy pegada justo después de esa
+    // columna fija, no debajo de ella.
+    const stickyCol = wrap.querySelector('th:first-child')
+    const stickyWidth = stickyCol ? stickyCol.getBoundingClientRect().width : 0
+    const delta = el.getBoundingClientRect().left - wrap.getBoundingClientRect().left - stickyWidth
+    wrap.scrollLeft += delta
+  }, [calWeekStart])
+
   return (
     <>
       <div className="topbar">
@@ -321,14 +338,14 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
                 <button onClick={() => setCalWeekStart(addDays(calWeekStart, -7))} title="Ver la semana anterior">‹</button>
                 <span className="range">{days[0].getDate()} – {days[6].getDate()} de {MESES[days[6].getMonth()].charAt(0) + MESES[days[6].getMonth()].slice(1).toLowerCase()}, {days[6].getFullYear()}</span>
                 <button onClick={() => setCalWeekStart(addDays(calWeekStart, 7))}>›</button>
-                <button className="today-btn" onClick={() => setCalWeekStart(todayMidnight())}>Hoy</button>
+                <button className="today-btn" onClick={() => setCalWeekStart(startOfWorkWeek(new Date()))}>Hoy</button>
               </div>
             </div>
             <div className="cal-wrap">
               <table className="calendar">
                 <thead><tr><th>Camión</th>{days.map(d => {
                   const dIso = isoDate(d)
-                  return <th key={+d}>{DIAS[d.getDay()]} {d.getDate()}{dIso === today && <span className="today-dot" title="Hoy"></span>}</th>
+                  return <th key={+d} ref={dIso === today ? todayColRef : null}>{DIAS[d.getDay()]} {d.getDate()}{dIso === today && <span className="today-dot" title="Hoy"></span>}</th>
                 })}</tr></thead>
                 <tbody>
                   {camiones.map(c => (
@@ -347,7 +364,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
                             <td key={+d}>
                               <div
                                 className={`badge small-info ${cls} badge-clickable`}
-                                title="Clic para ver / editar esta reserva"
+                                title={`${r?.empresa || r?.cliente || ''} · clic para ver / editar esta reserva`}
                                 onClick={() => r && openReservaEdit(r)}
                               >{est}<span className="b-sub">{r?.empresa || r?.cliente}</span></div>
                             </td>
