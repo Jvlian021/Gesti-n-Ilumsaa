@@ -15,6 +15,9 @@ const Mark = () => (
 // Evita que el modal se cierre y borre lo escrito cuando el usuario hace click y arrastra
 // (por ejemplo, seleccionando texto) desde dentro del modal hacia afuera: solo cierra si el
 // mousedown Y el click ocurrieron ambos directamente sobre el fondo, no sobre el contenido.
+// Encabezado corto de días para la grilla mensual del Historial (empieza en lunes).
+const DIAS_SEMANA_CORTOS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
+
 // Medianoche de hoy, para usar como inicio de la ventana visible del calendario (así el día
 // de hoy queda como primera columna, sin tener que desplazarse hacia los lados para verlo).
 function todayMidnight() { const d = new Date(); d.setHours(0, 0, 0, 0); return d }
@@ -281,6 +284,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
   const alerts = camiones.filter(c => c.estado_general === 'Mantención' || c.estado_general === 'Fuera de Servicio')
   const thisWeekStart = todayMidnight()
   const [expandedSvc, setExpandedSvc] = useState(null)
+  const [showHistorial, setShowHistorial] = useState(false)
 
   return (
     <>
@@ -289,7 +293,11 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
           <h1>{perfil.rol === 'Administradora' ? 'Bienvenida' : 'Bienvenido'}, {perfil.nombre}</h1>
           <div className="greet">{perfil.rol}</div>
         </div>
-        <div className="pill live"><span className="dot"></span> {new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <div className="pill live"><span className="dot"></span> {new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+          <button className="btn-outline btn-sm" onClick={() => setShowHistorial(true)} title="Ver historial de arriendos por mes">Historial</button>
+        </div>
+        <HistorialModal show={showHistorial} onClose={() => setShowHistorial(false)} reservas={reservas} camiones={camiones} openReservaEdit={openReservaEdit} />
       </div>
 
       <div className="stats-row">
@@ -455,6 +463,89 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
         </div>
       </div>
     </>
+  )
+}
+
+// ============================================================
+// Historial de arriendos: calendario mensual para consultar rápido qué empresa arrendó en
+// una fecha pasada (por ejemplo "a principios de mes"). Es de solo lectura — a diferencia del
+// calendario semanal del dashboard, aquí sí se puede navegar libremente a meses anteriores.
+function HistorialModal({ show, onClose, reservas, camiones, openReservaEdit }) {
+  const [mes, setMes] = useState(() => todayMidnight())
+  const [diaSel, setDiaSel] = useState(null)
+
+  useEffect(() => {
+    if (show) { setMes(todayMidnight()); setDiaSel(null) }
+  }, [show])
+
+  useEffect(() => {
+    if (!show) return
+    function onKey(e) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [show]) // eslint-disable-line
+
+  if (!show) return null
+
+  const year = mes.getFullYear(), month = mes.getMonth()
+  const firstOfMonth = new Date(year, month, 1)
+  const offset = (firstOfMonth.getDay() + 6) % 7 // 0 = lunes
+  const gridStart = addDays(firstOfMonth, -offset)
+  const celdas = [...Array(42)].map((_, i) => addDays(gridStart, i))
+
+  const today = isoDate(new Date())
+  const porDia = {}
+  reservas.forEach(r => { (porDia[r.fecha] = porDia[r.fecha] || []).push(r) })
+
+  const reservasDelDia = diaSel ? (porDia[diaSel] || []) : []
+
+  return (
+    <div className="modal-bg show" onMouseDown={overlayMouseDown} onClick={e => overlayClick(e, onClose)}>
+      <div className="modal" style={{maxWidth:560}} onClick={e => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose} aria-label="Cerrar">×</button>
+        <h3>Historial de arriendos</h3>
+        <div className="msub">Consulta qué empresa arrendó en un día pasado.</div>
+        <div className="week-nav" style={{justifyContent:'center',marginBottom:10}}>
+          <button onClick={() => { setMes(new Date(year, month - 1, 1)); setDiaSel(null) }}>‹</button>
+          <span className="range" style={{minWidth:170}}>{MESES[month].charAt(0) + MESES[month].slice(1).toLowerCase()} {year}</span>
+          <button onClick={() => { setMes(new Date(year, month + 1, 1)); setDiaSel(null) }}>›</button>
+          <button className="today-btn" onClick={() => { setMes(todayMidnight()); setDiaSel(null) }}>Hoy</button>
+        </div>
+        <div className="hist-grid">
+          {DIAS_SEMANA_CORTOS.map(d => <div key={d} className="hist-dow">{d}</div>)}
+          {celdas.map((d, i) => {
+            const dIso = isoDate(d)
+            const enMes = d.getMonth() === month
+            const items = porDia[dIso] || []
+            return (
+              <div
+                key={i}
+                className={`hist-cell ${enMes ? '' : 'muted'} ${dIso === today ? 'is-today' : ''} ${diaSel === dIso ? 'is-sel' : ''} ${items.length ? 'has-items' : ''}`}
+                onClick={() => items.length && setDiaSel(dIso === diaSel ? null : dIso)}
+              >
+                <div className="hist-daynum">{d.getDate()}</div>
+                {items.length > 0 && <div className="hist-dot"></div>}
+              </div>
+            )
+          })}
+        </div>
+        {diaSel && (
+          <div className="hist-detail">
+            <div className="hist-detail-title">{new Date(diaSel + 'T00:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+            {!reservasDelDia.length && <div className="empty-note">Sin arriendos ese día.</div>}
+            {reservasDelDia.map(r => {
+              const cam = camiones.find(c => c.id === r.camion_id)
+              return (
+                <div key={r.id} className="hist-item" onClick={() => { onClose(); openReservaEdit && openReservaEdit(r) }} title="Clic para ver el detalle de esta reserva">
+                  <div className="t1">{r.empresa || r.cliente}</div>
+                  <div className="t2">{cam?.nombre || '—'} · {r.estado}</div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
