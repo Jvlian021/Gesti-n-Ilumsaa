@@ -262,8 +262,30 @@ table.data textarea.desc-input{width:100%;min-width:260px;padding:8px 10px;borde
      horizontalmente dentro de su propia tarjeta en vez de cortarse o desbordar la página. */
   .card{overflow-x:auto;}
 
+  /* El dashboard tiene dos columnas en escritorio (calendario+disponibilidad a la izquierda,
+     próximos servicios+alertas a la derecha) usando CSS grid. Dentro de una grilla, una tarjeta
+     angosta que comparte columna con la del calendario (que a propósito mide 1060px mínimo,
+     para poder desplazarse) "contagia" ese ancho mínimo a toda la columna, y todo lo demás se
+     estira con ella — por eso el botón "Buscar disponibilidad" se veía gigante. Al pasar esta
+     sección a bloques normales (no grid), cada tarjeta vuelve a limitarse a su propio ancho. */
+  .grid-2col{display:block;}
+
   .modal{max-width:94vw;padding:20px 16px 18px;}
   .stat-card .val{font-size:22px;}
+}
+
+@media(max-width:520px){
+  /* Los formularios de "Nueva reserva" / editar reserva tienen varios pares de campos en dos
+     columnas (Camión/Estado, Fecha/Hasta, Empresa/Nombre cliente…) — en un celular angosto se
+     ven demasiado apretados, así que se apilan en una sola columna. */
+  .modal div[style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr !important;}
+
+  /* Las filas de filtros/campos ("quick-row": N° cotización, cliente, RUT, dirección, buscar
+     disponibilidad, agregar comuna, etc.) traen su propia cantidad de columnas fija por cada
+     caso — con el ancho de un celular quedaban en 3 o 4 columnas de unos 70px, imposibles de
+     usar. Se apilan en una sola columna, con !important porque cada fila define su propio
+     ancho de columnas por estilo en línea, que pesa más que una regla de clase normal. */
+  .quick-row{grid-template-columns:1fr !important;}
 }
 
 .section-sub{font-size:12.5px;color:var(--mute);margin:-6px 0 16px;}
@@ -276,13 +298,3 @@ table.data textarea.desc-input{width:100%;min-width:260px;padding:8px 10px;borde
 .rte-editor{width:100%;min-height:260px;padding:9px 10px;border:1px solid var(--border);border-radius:7px;font-size:13.5px;font-family:inherit;overflow-y:auto;line-height:1.5;}
 .rte-editor:focus{outline:2px solid var(--navy);outline-offset:1px;}
 .loading-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--mute);font-size:13px;}
-
-@media(max-width:880px){
-#app.show{grid-template-columns:1fr;}
-.sidebar{position:relative;height:auto;flex-direction:row;align-items:center;padding:12px 14px;overflow-x:auto;}
-.sidebar .brand{padding:0 14px 0 0;}
-.nav-group{display:flex;flex:none;}
-.sidebar-foot{display:none;}
-.stats-row{grid-template-columns:repeat(2,1fr);}
-.main{padding:16px;}
-}
