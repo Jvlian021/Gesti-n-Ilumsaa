@@ -274,7 +274,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
   camiones.forEach(c => {
     const est = camionEstadoEnFecha(c, today, reservas)
     if (est === 'Disponible') disp++
-    else if (est === 'Reservado' || est === 'En Trabajo') ocup++
+    else if (est === 'Reservado' || est === 'En Trabajo' || est === 'Pendiente') ocup++
     else if (est === 'Mantención' || est === 'Fuera de Servicio') mant++
   })
   const manana = reservas.filter(r => r.fecha === tomorrow).length
@@ -366,8 +366,8 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
                       {days.map(d => {
                         const dIso = isoDate(d)
                         const est = camionEstadoEnFecha(c, dIso, reservas)
-                        const cls = badgeClassFor(est)
-                        if (est === 'Reservado' || est === 'En Trabajo') {
+                        const cls = est === 'Pendiente' ? 'st-pendiente' : badgeClassFor(est)
+                        if (est === 'Reservado' || est === 'En Trabajo' || est === 'Pendiente') {
                           const r = reservas.find(rr => rr.camion_id === c.id && rr.fecha === dIso)
                           return (
                             <td key={+d}>
@@ -403,7 +403,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
             <div className="legend">
               <span><i style={{background:'var(--green)'}}></i>Disponible</span>
               <span><i style={{background:'var(--amber)'}}></i>Reservado</span>
-              <span><i style={{background:'var(--blue)'}}></i>En trabajo</span>
+              <span><i style={{background:'var(--gray)'}}></i>Pendiente</span>
               <span><i style={{background:'var(--red)'}}></i>En mantención</span>
               <span><i style={{background:'var(--purple)'}}></i>Fuera de servicio</span>
             </div>
@@ -476,7 +476,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
                       </div>
                     )}
                   </div>
-                  <span className={`svc-tag tag ${r.estado === 'En Trabajo' ? 'st-trabajo' : 'st-reservado'}`}>{r.estado}</span>
+                  <span className={`svc-tag tag ${r.estado === 'En Trabajo' ? 'st-trabajo' : r.estado === 'Pendiente' ? 'st-pendiente' : 'st-reservado'}`}>{r.estado}</span>
                 </div>
               )
             })}
@@ -927,7 +927,7 @@ function Reservas({ camiones, reservas, conductores, tarifasComunas, perfil, toa
                   <td>{cond?.nombre || '—'}</td>
                   <td>{r.comuna}</td>
                   <td>{r.direccion}</td>
-                  <td><span className={`tag ${badgeClassFor(r.estado)}`}>{r.estado}</span></td>
+                  <td><span className={`tag ${r.estado === 'Pendiente' ? 'st-pendiente' : badgeClassFor(r.estado)}`}>{r.estado}</span></td>
                   <td style={{display:'flex',gap:6}}>
                     <button className="btn-outline btn-sm" onClick={() => openReservaEdit(r)}>Editar</button>
                     <button className="btn-danger btn-sm" onClick={() => quickDelete(r)}>Eliminar</button>
@@ -1105,7 +1105,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
           </div>
           <div className="f-group"><label>Estado</label>
             <select value={form.estado} onChange={e => setForm({...form, estado: e.target.value})}>
-              <option value="Reservado">Reservado</option><option value="En Trabajo">En Trabajo</option><option value="Mantención">Mantención</option>
+              <option value="Reservado">Reservado</option><option value="Pendiente">Pendiente</option><option value="Mantención">Mantención</option>
             </select>
           </div>
         </div>
@@ -1957,37 +1957,37 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
         </div>
 
         <div className="section-sub" style={{margin:'16px 0 8px'}}>Ítems</div>
-        <table className="data">
+        <table className="data items-table">
           <thead><tr><th>Descripción</th><th>Altura</th><th>Unidad</th><th>Cantidad</th><th>Valor unitario</th><th>Valor total</th><th></th></tr></thead>
           <tbody>
             {items.map((it, i) => (
               <tr key={i}>
-                <td className="desc-cell"><textarea className="desc-input" value={it.descripcion} onChange={e => updateItem(i, 'descripcion', e.target.value)} placeholder="Arriendo de camión alza hombre de..." rows={3} /></td>
-                <td>
+                <td className="desc-cell" data-label="Descripción"><textarea className="desc-input" value={it.descripcion} onChange={e => updateItem(i, 'descripcion', e.target.value)} placeholder="Arriendo de camión alza hombre de..." rows={3} /></td>
+                <td data-label="Altura">
                   <select value={it.altura || ''} onChange={e => onChangeAltura(i, e.target.value)} style={{width:88}}>
                     <option value="">—</option>
                     <option value="13">13 m</option><option value="18">18 m</option><option value="20">20 m</option>
                   </select>
                 </td>
-                <td>
+                <td data-label="Unidad">
                   <select value={it.unidad} onChange={e => updateItem(i, 'unidad', e.target.value)}>
                     <option value="Hora">Hora</option><option value="Día">Día</option><option value="Semana">Semana</option>
                   </select>
                 </td>
-                <td><input type="text" inputMode="numeric" value={it.cantidad} onChange={e => updateItem(i, 'cantidad', e.target.value.replace(/[^\d]/g, ''))} style={{width:70}} /></td>
-                <td><input type="text" inputMode="numeric" value={fmtInputMoney(it.valorUnit)} onChange={e => updateItem(i, 'valorUnit', parseMoneyInput(e.target.value))} style={{width:110}} /></td>
-                <td className="mono">{fmtMoney((Number(it.cantidad) || 0) * (Number(it.valorUnit) || 0))}</td>
+                <td data-label="Cantidad"><input type="text" inputMode="numeric" value={it.cantidad} onChange={e => updateItem(i, 'cantidad', e.target.value.replace(/[^\d]/g, ''))} style={{width:70}} /></td>
+                <td data-label="Valor unitario"><input type="text" inputMode="numeric" value={fmtInputMoney(it.valorUnit)} onChange={e => updateItem(i, 'valorUnit', parseMoneyInput(e.target.value))} style={{width:110}} /></td>
+                <td className="mono" data-label="Valor total">{fmtMoney((Number(it.cantidad) || 0) * (Number(it.valorUnit) || 0))}</td>
                 <td>{items.length > 1 && <button className="btn-danger btn-sm" onClick={() => removeItem(i)}>×</button>}</td>
               </tr>
             ))}
             {incluirTraslado && (
               <tr style={{background:'var(--bg2, #fafafa)'}}>
-                <td className="desc-cell"><textarea className="desc-input" value={trasladoDescripcion} onChange={e => onChangeTrasladoDescripcion(e.target.value)} rows={3} /></td>
-                <td><span className="mono">—</span></td>
-                <td><span className="mono">un</span></td>
-                <td><input type="text" inputMode="numeric" value={trasladoCantidad} onChange={e => setTrasladoCantidad(e.target.value.replace(/[^\d]/g, ''))} style={{width:70}} /></td>
-                <td><input type="text" inputMode="numeric" value={fmtInputMoney(trasladoValor)} onChange={e => onChangeTrasladoValor(e.target.value)} style={{width:110}} /></td>
-                <td className="mono">{fmtMoney((Number(trasladoCantidad) || 0) * (Number(trasladoValor) || 0))}</td>
+                <td className="desc-cell" data-label="Descripción"><textarea className="desc-input" value={trasladoDescripcion} onChange={e => onChangeTrasladoDescripcion(e.target.value)} rows={3} /></td>
+                <td data-label="Altura"><span className="mono">—</span></td>
+                <td data-label="Unidad"><span className="mono">un</span></td>
+                <td data-label="Cantidad"><input type="text" inputMode="numeric" value={trasladoCantidad} onChange={e => setTrasladoCantidad(e.target.value.replace(/[^\d]/g, ''))} style={{width:70}} /></td>
+                <td data-label="Valor unitario"><input type="text" inputMode="numeric" value={fmtInputMoney(trasladoValor)} onChange={e => onChangeTrasladoValor(e.target.value)} style={{width:110}} /></td>
+                <td className="mono" data-label="Valor total">{fmtMoney((Number(trasladoCantidad) || 0) * (Number(trasladoValor) || 0))}</td>
                 <td><button className="btn-danger btn-sm" onClick={() => setIncluirTraslado(false)}>×</button></td>
               </tr>
             )}
