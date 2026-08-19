@@ -286,6 +286,19 @@ table.data textarea.desc-input{width:100%;min-width:260px;padding:8px 10px;borde
      usar. Se apilan en una sola columna, con !important porque cada fila define su propio
      ancho de columnas por estilo en línea, que pesa más que una regla de clase normal. */
   .quick-row{grid-template-columns:1fr !important;}
+
+  /* Tabla de ítems de la cotización: en vez de una tabla angosta con scroll horizontal (poco
+     cómoda para ir completando cada ítem), cada fila se convierte en una tarjeta apilada con
+     un campo debajo del otro, usando la etiqueta guardada en data-label. */
+  table.items-table{min-width:0;}
+  table.items-table thead{display:none;}
+  table.items-table, table.items-table tbody, table.items-table tr{display:block;width:100%;}
+  table.items-table tr{border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:12px;}
+  table.items-table td{display:block;width:100%;border-bottom:none;padding:6px 0;}
+  table.items-table td[data-label]::before{content:attr(data-label);display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mute);margin-bottom:4px;}
+  table.items-table td.desc-cell{width:100%;}
+  table.items-table textarea.desc-input{min-width:0;}
+  table.items-table input,table.items-table select{width:100% !important;}
 }
 
 .section-sub{font-size:12.5px;color:var(--mute);margin:-6px 0 16px;}
