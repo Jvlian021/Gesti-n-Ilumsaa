@@ -196,6 +196,11 @@ table.data textarea.desc-input{width:100%;min-width:260px;padding:8px 10px;borde
 .modal-actions{display:flex;gap:10px;margin-top:18px;}
 .modal-actions button{flex:1;}
 
+.confirm-modal{max-width:400px;padding:26px 26px 22px;text-align:center;}
+.confirm-icon{width:44px;height:44px;border-radius:50%;background:var(--red-bg);color:var(--red);font-weight:800;font-size:20px;font-style:normal;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;}
+.confirm-msg{font-size:14.5px;color:var(--text);line-height:1.5;}
+.confirm-modal .modal-actions{margin-top:22px;}
+
 .readonly-note{background:var(--gray-bg);color:var(--mute);font-size:12px;padding:9px 12px;border-radius:8px;margin-bottom:14px;}
 
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--navy);color:#fff;padding:11px 20px;border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.25);transition:all .25s;z-index:100;pointer-events:none;}
