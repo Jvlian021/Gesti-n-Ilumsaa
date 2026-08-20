@@ -1761,8 +1761,10 @@ async function generarPdfCotizacion(q, nombreArchivo) {
       if (data.section !== 'body' || data.column.index !== 1) return
       const it = q.items[data.row.index]
       if (!it || !isHtmlContent(it.descripcion)) return
+      // Deja 1pt sin pintar arriba y abajo para no borrar la línea del borde de la fila (que
+      // queda justo en el borde de la celda) — solo se tapa el texto plano de más adentro.
       doc.setFillColor(255, 255, 255)
-      doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F')
+      doc.rect(data.cell.x, data.cell.y + 1, data.cell.width, data.cell.height - 2, 'F')
       const blocks = parseHtmlToBlocks(it.descripcion)
       const padL = data.cell.padding('left'), padT = data.cell.padding('top')
       drawRichCellText(doc, blocks, data.cell.x + padL, data.cell.width - padL - data.cell.padding('right'), data.cell.y + padT + 7.5, F.serif, 9.5, 11)
