@@ -403,7 +403,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
             <div className="legend">
               <span><i style={{background:'var(--green)'}}></i>Disponible</span>
               <span><i style={{background:'var(--amber)'}}></i>Reservado</span>
-              <span><i style={{background:'var(--orange-dark)'}}></i>Pendiente</span>
+              <span><i style={{background:'var(--rose)'}}></i>Pendiente</span>
               <span><i style={{background:'var(--red)'}}></i>En mantención</span>
               <span><i style={{background:'var(--purple)'}}></i>Fuera de servicio</span>
             </div>
