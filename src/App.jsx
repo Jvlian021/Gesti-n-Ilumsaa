@@ -29,6 +29,20 @@ function overlayClick(e, closeFn) {
   if (wasDownOnBg && e.target === e.currentTarget) closeFn()
 }
 
+// Envoltorio sobre camionEstadoEnFecha que respeta la fecha "desde" de una mantención/fuera de
+// servicio: camionEstadoEnFecha solo conoce el límite "hasta", así que sin este envoltorio un
+// camión puesto en mantención "desde hoy" aparecía en mantención también en los días *anteriores*
+// a hoy. Si la fecha consultada es anterior al "desde" guardado, se calcula el estado real de
+// ese día a partir de las reservas, en vez de marcarlo en mantención retroactivamente.
+function estadoCamionFecha(c, fechaIso, reservas) {
+  const enPausa = c.estado_general === 'Mantención' || c.estado_general === 'Fuera de Servicio'
+  if (enPausa && c.desde && fechaIso < c.desde) {
+    const r = reservas.find(rr => rr.camion_id === c.id && rr.fecha === fechaIso)
+    return r ? r.estado : 'Disponible'
+  }
+  return camionEstadoEnFecha(c, fechaIso, reservas)
+}
+
 // Sugerencias para "Tipo de trabajo" en el formulario de reservas — el campo queda libre
 // para escribir cualquier cosa, esto solo ayuda a elegir rápido los más comunes.
 const TIPOS_TRABAJO = [
@@ -136,7 +150,7 @@ export default function App() {
   function openReservaDraft(prefill) {
     const hoy = isoDate(new Date())
     const tamano = prefill?.tamano ? Number(prefill.tamano) : null
-    const sugerido = tamano ? camiones.find(c => c.tamano === tamano && camionEstadoEnFecha(c, hoy, reservas) === 'Disponible') : null
+    const sugerido = tamano ? camiones.find(c => c.tamano === tamano && estadoCamionFecha(c, hoy, reservas) === 'Disponible') : null
     setReservaModal({ show: true, camionId: sugerido?.id || '', fecha: hoy, editReserva: null, prefill })
   }
   function closeReserva() { setReservaModal(m => ({ ...m, show: false })) }
@@ -161,6 +175,7 @@ export default function App() {
             tarifaArriendo={tarifaArriendo} tarifasComunas={tarifasComunas}
             calWeekStart={calWeekStart} setCalWeekStart={setCalWeekStart}
             setView={setView} toast={toast} openReserva={openReserva} openReservaEdit={openReservaEdit}
+            reload={loadAll} confirm={confirmDialog}
           />
         )}
         {view === 'camiones' && (
@@ -266,13 +281,13 @@ function Sidebar({ perfil, view, setView, mobileOpen, onNavigate }) {
 }
 
 // ============================================================
-function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, tarifasComunas, calWeekStart, setCalWeekStart, setView, toast, openReserva, openReservaEdit }) {
+function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, tarifasComunas, calWeekStart, setCalWeekStart, setView, toast, openReserva, openReservaEdit, reload, confirm }) {
   const today = isoDate(new Date())
   const tomorrow = isoDate(addDays(new Date(), 1))
   const total = camiones.length
   let disp = 0, ocup = 0, mant = 0
   camiones.forEach(c => {
-    const est = camionEstadoEnFecha(c, today, reservas)
+    const est = estadoCamionFecha(c, today, reservas)
     if (est === 'Disponible') disp++
     else if (est === 'Reservado' || est === 'En Trabajo' || est === 'Pendiente') ocup++
     else if (est === 'Mantención' || est === 'Fuera de Servicio') mant++
@@ -287,9 +302,16 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
   const [qComuna, setQComuna] = useState('')
   const [qResult, setQResult] = useState(null)
 
+  async function finalizarMantencion(c) {
+    if (!(await confirm(`¿Finalizar la mantención/fuera de servicio de "${c.nombre}" y dejarlo disponible?`))) return
+    const { error } = await supabase.from('camiones').update({ estado_general: 'Operativo', desde: null, hasta: null }).eq('id', c.id)
+    if (error) { toast('No se pudo actualizar el camión'); return }
+    reload(); toast('Camión disponible nuevamente')
+  }
+
   function runSearch() {
     // Muestra TODOS los camiones disponibles de ese tamaño ese día, no solo el primero.
-    const trucks = camiones.filter(c => c.tamano === Number(qSize) && camionEstadoEnFecha(c, qDate, reservas) === 'Disponible')
+    const trucks = camiones.filter(c => c.tamano === Number(qSize) && estadoCamionFecha(c, qDate, reservas) === 'Disponible')
     if (!trucks.length) { setQResult({ ok: false }); return }
     const price = priceFor(tarifaArriendo, tarifasComunas, qSize, qComuna)
     setQResult({ ok: true, trucks, price })
@@ -365,7 +387,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
                       </td>
                       {days.map(d => {
                         const dIso = isoDate(d)
-                        const est = camionEstadoEnFecha(c, dIso, reservas)
+                        const est = estadoCamionFecha(c, dIso, reservas)
                         const cls = est === 'Pendiente' ? 'st-pendiente' : badgeClassFor(est)
                         if (est === 'Reservado' || est === 'En Trabajo' || est === 'Pendiente') {
                           const r = reservas.find(rr => rr.camion_id === c.id && rr.fecha === dIso)
@@ -380,7 +402,15 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
                           )
                         }
                         if (est === 'Mantención' || est === 'Fuera de Servicio') {
-                          return <td key={+d}><div className={`badge small-info ${cls}`}>{est}<span className="b-sub">{est === 'Mantención' && c.hasta ? 'Hasta ' + c.hasta.slice(8,10)+'/'+c.hasta.slice(5,7) : ''}</span></div></td>
+                          return (
+                            <td key={+d}>
+                              <div
+                                className={`badge small-info ${cls} badge-clickable`}
+                                title="Clic para finalizar la mantención y dejar el camión disponible"
+                                onClick={() => finalizarMantencion(c)}
+                              >{est}<span className="b-sub">{est === 'Mantención' && c.hasta ? 'Hasta ' + c.hasta.slice(8,10)+'/'+c.hasta.slice(5,7) : ''}</span></div>
+                            </td>
+                          )
                         }
                         if (dIso < today) {
                           return <td key={+d}><div className={`badge ${cls}`} style={{opacity:.5,cursor:'default'}} title="No se puede agendar en un día anterior">{est}</div></td>
@@ -404,7 +434,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
               <span><i style={{background:'var(--green)'}}></i>Disponible</span>
               <span><i style={{background:'var(--amber)'}}></i>Reservado</span>
               <span><i style={{background:'var(--rose)'}}></i>Pendiente</span>
-              <span><i style={{background:'var(--red)'}}></i>En mantención</span>
+              <span><i style={{background:'var(--slate)'}}></i>En mantención</span>
               <span><i style={{background:'var(--purple)'}}></i>Fuera de servicio</span>
             </div>
           </div>
@@ -605,6 +635,7 @@ function Camiones({ camiones, isAdmin, toast, reload, confirm }) {
     const patch = {
       nombre: row.nombre, patente: row.patente, tamano: Number(row.tamano), aislado: row.aislado,
       estado_general: row.estado_general, hasta: row.estado_general === 'Operativo' ? null : (row.hasta || null),
+      desde: row.estado_general === 'Operativo' ? null : (row.desde || isoDate(new Date())),
     }
     const { error } = await supabase.from('camiones').update(patch).eq('id', id)
     setSavingId(null)
@@ -637,7 +668,7 @@ function Camiones({ camiones, isAdmin, toast, reload, confirm }) {
       </div>
       <div className="card" style={{padding:0}}>
         <table className="data">
-          <thead><tr><th>Camión</th><th>Patente</th><th>Tamaño</th><th>Aislado</th><th>Estado</th><th>Hasta</th>{isAdmin && <th></th>}</tr></thead>
+          <thead><tr><th>Camión</th><th>Patente</th><th>Tamaño</th><th>Aislado</th><th>Estado</th><th>Desde</th><th>Hasta</th>{isAdmin && <th></th>}</tr></thead>
           <tbody>
             {rows.map(c => (
               <tr key={c.id}>
@@ -669,6 +700,10 @@ function Camiones({ camiones, isAdmin, toast, reload, confirm }) {
                   ) : (
                     <span className={`tag ${badgeClassFor(c.estado_general === 'Operativo' ? 'Disponible' : c.estado_general)}`}>{c.estado_general}</span>
                   )}
+                </td>
+                <td>{isAdmin
+                  ? <input type="date" value={c.desde || ''} disabled={c.estado_general === 'Operativo'} onChange={e => editField(c.id, 'desde', e.target.value)} style={{width:135}} />
+                  : (c.desde ? new Date(c.desde+'T00:00:00').toLocaleDateString('es-CL') : '—')}
                 </td>
                 <td>{isAdmin
                   ? <input type="date" value={c.hasta || ''} disabled={c.estado_general === 'Operativo'} onChange={e => editField(c.id, 'hasta', e.target.value)} style={{width:135}} />
@@ -1052,7 +1087,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
         const { error: delErr } = await supabase.from('reservas').delete().eq('id', editReserva.id)
         if (delErr) { toast('No se pudo actualizar la reserva'); return }
       }
-      const { error } = await supabase.from('camiones').update({ estado_general: 'Mantención', hasta: hastaFinal }).eq('id', form.camionId)
+      const { error } = await supabase.from('camiones').update({ estado_general: 'Mantención', desde: form.fecha, hasta: hastaFinal }).eq('id', form.camionId)
       if (error) { toast('No se pudo poner el camión en mantención'); return }
       reload(); toast('Camión puesto en mantención'); onClose()
       return
