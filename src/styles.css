@@ -102,9 +102,10 @@ background:radial-gradient(circle at 15% 20%, rgba(233,106,12,.14), transparent 
 .card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
 .card-head h2{font-size:15px;margin:0;}
 .card-head .week-nav{display:flex;align-items:center;gap:8px;font-size:13px;}
-.week-nav button{border:1px solid var(--border);background:#fff;border-radius:6px;width:26px;height:26px;font-size:13px;color:var(--mute);}
+.week-nav button:not(.today-btn):not(.cal-btn){border:1px solid var(--border);background:#fff;border-radius:6px;width:26px;height:26px;font-size:13px;color:var(--mute);}
 .week-nav .range{font-weight:700;font-size:13px;min-width:150px;text-align:center;}
-.week-nav .today-btn{border:1px solid var(--border);background:#fff;border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;color:var(--text);}
+.week-nav .today-btn{border:1px solid var(--border);background:#fff;border-radius:6px;width:auto;height:auto;padding:5px 10px;font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;}
+.week-nav .cal-btn{border:1px solid var(--border);background:#fff;border-radius:6px;width:auto;height:auto;padding:5px 10px;font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;margin-right:4px;}
 .week-nav button:disabled{opacity:.35;cursor:not-allowed;}
 .today-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--orange);margin-left:5px;vertical-align:middle;}
 
@@ -231,7 +232,8 @@ table.data textarea.desc-input{width:100%;min-width:260px;padding:8px 10px;borde
 .hist-cell.is-sel .hist-dot{background:#fff;}
 .hist-dot{width:5px;height:5px;border-radius:50%;background:var(--orange);margin-top:2px;}
 .hist-detail{margin-top:16px;border-top:1px solid var(--border);padding-top:12px;}
-.hist-detail-title{font-weight:700;font-size:13px;margin-bottom:8px;text-transform:capitalize;}
+.hist-detail-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+.hist-detail-title{font-weight:700;font-size:13px;text-transform:capitalize;}
 .hist-item{padding:8px 10px;border-radius:8px;background:var(--gray-bg);margin-bottom:6px;cursor:pointer;}
 .hist-item:hover{background:#e9edf3;}
 .hist-item .t1{font-weight:700;font-size:13px;}
