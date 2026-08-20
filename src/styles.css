@@ -10,6 +10,7 @@
 --rose:#C21F5F; --rose-bg:#FCE4EE;
 --purple:#7C5CBF; --purple-bg:#F1ECFB;
 --gray:#6B7280; --gray-bg:#F0F1F3;
+--slate:#454B54; --slate-bg:#E4E6EA;
 --radius:10px;
 --shadow:0 1px 2px rgba(16,24,38,.04), 0 1px 12px rgba(16,24,38,.04);
 }
@@ -133,7 +134,7 @@ table.calendar th:first-child{ z-index:3; }
 .st-disponible{background:var(--green-bg);color:var(--green);}
 .st-reservado{background:var(--amber-bg);color:var(--amber);}
 .st-trabajo{background:var(--blue-bg);color:var(--blue);}
-.st-mantencion{background:var(--red-bg);color:var(--red);}
+.st-mantencion{background:var(--slate-bg);color:var(--slate);}
 .st-fuera{background:var(--purple-bg);color:var(--purple);}
 .st-pendiente{background:var(--rose-bg);color:var(--rose);}
 
