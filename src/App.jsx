@@ -52,6 +52,49 @@ const TIPOS_TRABAJO = [
   'Trabajo en altura / fachada',
 ]
 
+// Campo de texto con opción de negrita (para la descripción de los ítems del cotizador).
+// Guarda el contenido como HTML simple (<strong>...</strong> para lo que esté en negrita),
+// que después se traduce tal cual al PDF respetando qué parte quedó en negrita.
+function RichTextArea({ value, onChange, placeholder }) {
+  const ref = useRef(null)
+  const savedRange = useRef(null)
+  // Solo pisa el contenido del div cuando el valor cambió desde AFUERA (por ejemplo, al elegir
+  // la altura se autocompleta la descripción). Si el cambio vino del propio onInput de abajo, el
+  // innerHTML ya coincide con "value" y no se toca nada — así no se pierde el cursor al escribir.
+  useEffect(() => {
+    if (ref.current && ref.current.innerHTML !== (value || '')) ref.current.innerHTML = value || ''
+  }, [value])
+  function saveSel() {
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount > 0 && ref.current && ref.current.contains(sel.anchorNode)) {
+      savedRange.current = sel.getRangeAt(0).cloneRange()
+    }
+  }
+  function toggleBold(e) {
+    e.preventDefault()
+    const sel = window.getSelection()
+    if (sel && savedRange.current) { sel.removeAllRanges(); sel.addRange(savedRange.current) }
+    if (ref.current) ref.current.focus()
+    document.execCommand('bold')
+    if (ref.current) onChange(ref.current.innerHTML)
+  }
+  return (
+    <div className="rte">
+      <button type="button" className="rte-bold-btn" title="Negrita" onMouseDown={e => e.preventDefault()} onClick={toggleBold}><b>N</b></button>
+      <div
+        ref={ref}
+        className="rte-editable desc-input"
+        contentEditable
+        suppressContentEditableWarning
+        data-placeholder={placeholder}
+        onMouseUp={saveSel}
+        onKeyUp={saveSel}
+        onInput={e => onChange(e.currentTarget.innerHTML)}
+      />
+    </div>
+  )
+}
+
 // Iconos de navegación en SVG (más confiables entre navegadores que los emoji/símbolos unicode)
 const NavIcons = {
   dashboard: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>,
@@ -1370,8 +1413,16 @@ const NAVY = [0, 10, 116]
 const BLUE2 = [31, 72, 124]
 const GRAY_FILL = [237, 237, 237]
 
+// Descripción sugerida según la altura del camión elegido — se autocompleta al elegir la altura,
+// pero queda libre para editar igual que siempre.
+const DESC_POR_ALTURA = {
+  13: 'Arriendo de camión alza hombre de 13 metros de altura con canastillo simple (capacidad para una persona) para día sábado de 09:30 a 16:00 hrs. <strong>Incluye conductor/operador, combustible y tag.</strong>',
+  18: 'Arriendo de camión alza hombre de 18 metros de altura con canastillo doble (capacidad para dos personas) desde las 09:00 hrs. <strong>Incluye conductor/operador, combustible y tag.</strong>',
+  20: 'Arriendo de camión alza hombre de 20 metros de altura con canastillo doble (capacidad para dos personas) desde las 09:00 hrs. <strong>Incluye conductor/operador, combustible y tag.</strong>',
+}
+
 // Texto por defecto del primer ítem — queda precargado pero se puede editar libremente
-const ITEM_DEFAULT_DESC = 'Arriendo de camión alza hombre de 20 metros de altura con canastillo doble (capacidad para dos personas) desde las 21:00 hrs. Incluye conductor/operador, combustible y tag.'
+const ITEM_DEFAULT_DESC = DESC_POR_ALTURA[20]
 
 function nuevoItem() { return { descripcion: ITEM_DEFAULT_DESC, altura: '', unidad: 'Hora', cantidad: 1, valorUnit: 0 } }
 
@@ -1525,6 +1576,57 @@ function parseHtmlToBlocks(html) {
   return blocks
 }
 
+// Versión en texto plano (sin negrita) del mismo HTML, solo para que autoTable calcule el ancho
+// alto de la celda de "Descripción" de los ítems — el dibujo real con negrita se hace aparte,
+// encima, en didDrawCell (ver generarPdfCotizacion).
+function htmlToPlainText(html) {
+  if (!isHtmlContent(html)) return html || ''
+  const div = document.createElement('div')
+  div.innerHTML = html
+  div.querySelectorAll('br').forEach(br => br.replaceWith('\n'))
+  div.querySelectorAll('div,p').forEach(el => el.append('\n'))
+  return (div.textContent || '').replace(/\n{2,}/g, '\n').trim()
+}
+
+// Dibuja texto con negrita parcial dentro de un ancho fijo (para la celda "Descripción" de la
+// tabla de ítems, con el mismo font que usa esa columna). No maneja color, solo negrita/normal.
+function drawRichCellText(doc, blocks, x, width, startY, font, fontSize, lineH) {
+  let cy = startY
+  doc.setFont(font, 'normal'); doc.setFontSize(fontSize)
+  const spaceW = doc.getTextWidth(' ')
+  blocks.forEach(block => {
+    const words = []
+    block.forEach(run => {
+      String(run.text).split(/(\s+)/).forEach(part => {
+        if (!part || /^\s+$/.test(part)) return
+        words.push({ text: part, bold: run.bold })
+      })
+    })
+    if (!words.length) { cy += lineH; return }
+    let line = [], lineWidth = 0
+    function flushLine() {
+      if (!line.length) return
+      let lx = x
+      line.forEach(w => {
+        doc.setFont(font, w.bold ? 'bold' : 'normal'); doc.setFontSize(fontSize)
+        doc.text(w.text, lx, cy)
+        lx += doc.getTextWidth(w.text) + spaceW
+      })
+      cy += lineH
+      line = []; lineWidth = 0
+    }
+    words.forEach(w => {
+      doc.setFont(font, w.bold ? 'bold' : 'normal'); doc.setFontSize(fontSize)
+      const wWidth = doc.getTextWidth(w.text)
+      const extra = line.length ? spaceW : 0
+      if (line.length && lineWidth + extra + wWidth > width) flushLine()
+      line.push(w)
+      lineWidth += (line.length > 1 ? spaceW : 0) + wWidth
+    })
+    flushLine()
+  })
+}
+
 // Dibuja los bloques de "condiciones comerciales" en el PDF, con ajuste de línea (word-wrap)
 // palabra por palabra, respetando la negrita/color de cada una. Los bloques que están
 // completos en negrita (los títulos de sección) se pintan en azul navy con espacio extra
@@ -1637,7 +1739,7 @@ async function generarPdfCotizacion(q, nombreArchivo) {
     startY: y,
     head: [['ÍTEM', 'DESCRIPCIÓN', 'UNIDAD', 'CANTIDAD', 'VALOR UN', 'VALOR TOTAL']],
     body: q.items.map((it, i) => [
-      String(i + 1), it.descripcion, it.unidad, String(it.cantidad),
+      String(i + 1), htmlToPlainText(it.descripcion), it.unidad, String(it.cantidad),
       fmtMoney(it.valorUnit), fmtMoney((Number(it.cantidad) || 0) * (Number(it.valorUnit) || 0)),
     ]),
     theme: 'plain',
@@ -1652,6 +1754,19 @@ async function generarPdfCotizacion(q, nombreArchivo) {
       5: { cellWidth: 74, halign: 'center' },
     },
     margin: { left: marginL, right: marginR },
+    // La columna Descripción puede traer negrita parcial (guardada como HTML desde el mini-editor
+    // del formulario). autoTable solo dibuja texto plano, así que acá se borra lo que dibujó por
+    // defecto en esa celda y se vuelve a dibujar a mano respetando qué parte quedó en negrita.
+    didDrawCell: (data) => {
+      if (data.section !== 'body' || data.column.index !== 1) return
+      const it = q.items[data.row.index]
+      if (!it || !isHtmlContent(it.descripcion)) return
+      doc.setFillColor(255, 255, 255)
+      doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F')
+      const blocks = parseHtmlToBlocks(it.descripcion)
+      const padL = data.cell.padding('left'), padT = data.cell.padding('top')
+      drawRichCellText(doc, blocks, data.cell.x + padL, data.cell.width - padL - data.cell.padding('right'), data.cell.y + padT + 7.5, F.serif, 9.5, 11)
+    },
   })
 
   const totalRows = [['SUBTOTAL NETO', fmtMoney(q.subtotal)]]
@@ -1845,7 +1960,8 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
     setItems(rows => rows.map((r, idx) => {
       if (idx !== i) return r
       const sugerido = altura && tarifaArriendo[altura] != null ? Number(tarifaArriendo[altura]) || 0 : r.valorUnit
-      return { ...r, altura, valorUnit: sugerido }
+      const descripcionSugerida = altura && DESC_POR_ALTURA[altura] ? DESC_POR_ALTURA[altura] : r.descripcion
+      return { ...r, altura, valorUnit: sugerido, descripcion: descripcionSugerida }
     }))
   }
   function addItem() { setItems(rows => [...rows, nuevoItem()]) }
@@ -2021,7 +2137,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
           <tbody>
             {items.map((it, i) => (
               <tr key={i}>
-                <td className="desc-cell" data-label="Descripción"><textarea className="desc-input" value={it.descripcion} onChange={e => updateItem(i, 'descripcion', e.target.value)} placeholder="Arriendo de camión alza hombre de..." rows={3} /></td>
+                <td className="desc-cell" data-label="Descripción"><RichTextArea value={it.descripcion} onChange={v => updateItem(i, 'descripcion', v)} placeholder="Arriendo de camión alza hombre de..." /></td>
                 <td data-label="Altura">
                   <select value={it.altura || ''} onChange={e => onChangeAltura(i, e.target.value)} style={{width:88}}>
                     <option value="">—</option>
