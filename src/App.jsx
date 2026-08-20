@@ -348,9 +348,8 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           <div className="pill live"><span className="dot"></span> {new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
-          <button className="btn-outline btn-sm" onClick={() => setShowHistorial(true)} title="Ver historial de arriendos por mes">Historial</button>
         </div>
-        <HistorialModal show={showHistorial} onClose={() => setShowHistorial(false)} reservas={reservas} camiones={camiones} openReservaEdit={openReservaEdit} />
+        <HistorialModal show={showHistorial} onClose={() => setShowHistorial(false)} reservas={reservas} camiones={camiones} openReservaEdit={openReservaEdit} openReserva={openReserva} />
       </div>
 
       <div className="stats-row">
@@ -366,6 +365,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
             <div className="card-head">
               <h2>Calendario de camiones</h2>
               <div className="week-nav">
+                <button className="cal-btn" onClick={() => setShowHistorial(true)} title="Ver calendario mensual de arriendos">Calendario</button>
                 <button onClick={() => setCalWeekStart(addDays(calWeekStart, -7))} title="Ver la semana anterior">‹</button>
                 <span className="range">{days[0].getDate()} – {days[6].getDate()} de {MESES[days[6].getMonth()].charAt(0) + MESES[days[6].getMonth()].slice(1).toLowerCase()}, {days[6].getFullYear()}</span>
                 <button onClick={() => setCalWeekStart(addDays(calWeekStart, 7))}>›</button>
@@ -531,7 +531,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
 // Historial de arriendos: calendario mensual para consultar rápido qué empresa arrendó en
 // una fecha pasada (por ejemplo "a principios de mes"). Es de solo lectura — a diferencia del
 // calendario semanal del dashboard, aquí sí se puede navegar libremente a meses anteriores.
-function HistorialModal({ show, onClose, reservas, camiones, openReservaEdit }) {
+function HistorialModal({ show, onClose, reservas, camiones, openReservaEdit, openReserva }) {
   const [mes, setMes] = useState(() => todayMidnight())
   const [diaSel, setDiaSel] = useState(null)
 
@@ -592,7 +592,10 @@ function HistorialModal({ show, onClose, reservas, camiones, openReservaEdit }) 
         </div>
         {diaSel && (
           <div className="hist-detail">
-            <div className="hist-detail-title">{new Date(diaSel + 'T00:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+            <div className="hist-detail-head">
+              <div className="hist-detail-title">{new Date(diaSel + 'T00:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+              {openReserva && <button className="btn-orange btn-sm" onClick={() => { onClose(); openReserva('', diaSel) }}>+ Agregar reserva</button>}
+            </div>
             {!reservasDelDia.length && <div className="empty-note">Sin arriendos ese día.</div>}
             {reservasDelDia.map(r => {
               const cam = camiones.find(c => c.id === r.camion_id)
@@ -1725,7 +1728,11 @@ async function generarPdfCotizacion(q, nombreArchivo) {
 
 function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, perfil, toast, reload, confirm, openReservaDraft }) {
   const today = isoDate(new Date())
-  const nextNumero = cotizaciones.reduce((max, c) => Math.max(max, c.numero || 0), 0) + 1
+  // El número sugerido sigue a la ÚLTIMA cotización creada (por fecha de creación), no al número
+  // más alto que exista: así, si se edita el número a mano hacia uno más bajo y se guarda, la
+  // siguiente cotización continúa desde ese número editado en vez de "saltar" de vuelta al más alto.
+  const ultimaCreada = [...cotizaciones].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0]
+  const nextNumero = (ultimaCreada?.numero || 0) + 1
 
   // El número se autocompleta con el siguiente correlativo, pero se puede editar a mano.
   // Si no se toca, se sigue actualizando solo a medida que se guardan nuevas cotizaciones.
@@ -1859,6 +1866,23 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
   const iva = neto * 0.19
   const total = neto + iva
 
+  // Rellena el formulario con datos de ejemplo para probar rápido cambios visuales/del PDF sin
+  // tener que volver a escribir todos los datos de un cliente real cada vez. No toca el N° de
+  // cotización (para no chocar con la numeración real) ni guarda nada — solo llena el formulario.
+  function lanzarPrueba() {
+    setCliente('Cliente de Prueba SpA')
+    setClienteNombre('Juan Pérez')
+    setClienteContacto('+56 9 1234 5678')
+    setClienteRut('76.123.456-7')
+    setClienteDireccion('Av. Siempre Viva 123, Santiago')
+    setClienteCorreo('prueba@ejemplo.cl')
+    setItems([{ descripcion: 'Servicio de prueba', altura: '', unidad: 'Hora', cantidad: 2, valorUnit: 15000 }])
+    setAplicaDescuento(true); setDescuentoPct('10')
+    setIncluirTraslado(true)
+    if (tarifasComunas.length) setTrasladoComuna(tarifasComunas[0].comuna)
+    toast('Datos de prueba cargados')
+  }
+
   function resetForm() {
     setCliente(''); setClienteNombre(''); setClienteContacto(''); setClienteRut(''); setClienteDireccion(''); setClienteCorreo('')
     setFecha(today); setItems([nuevoItem()])
@@ -1964,7 +1988,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
     <>
       <div className="toolbar"><div><h1>Cotizaciones</h1><div className="section-sub">Arma una cotización detallada y descarga el PDF para enviar al cliente</div></div></div>
       <div className="card">
-        <div className="card-head"><h2>Nueva cotización</h2></div>
+        <div className="card-head"><h2>Nueva cotización</h2><button className="btn-outline btn-sm" type="button" onClick={lanzarPrueba} title="Rellena el formulario con datos de ejemplo para probar cambios rápido">Lanzar prueba</button></div>
         <div className="quick-row" style={{gridTemplateColumns:'0.6fr 1.1fr 1fr 1fr'}}>
           <div className="f-group"><label>N° de cotización</label><input type="text" inputMode="numeric" value={numero} onChange={e => onChangeNumero(e.target.value)} /></div>
           <div className="f-group"><label>Cliente</label>
