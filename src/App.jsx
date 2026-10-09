@@ -5,8 +5,9 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import {
   isoDate, startOfWorkWeek, addDays, fmtMoney, fmtInputMoney, parseMoneyInput, DIAS, MESES,
-  badgeClassFor, camionEstadoEnFecha, findAvailableTruck, priceFor,
+  badgeClassFor, camionEstadoEnFecha, findAvailableTruck, priceFor, formatRut,
 } from './helpers.js'
+import Grua from './Grua.jsx'
 
 const Mark = () => (
   <div className="mark-plate"><img src="/logo.png" alt="Ilumsa" className="mark-img" /></div>
@@ -104,6 +105,7 @@ const NavIcons = {
   cotizaciones: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M9 12h6M9 16h6M9 8h3"/></svg>,
   conductores: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.9 3.13-7 7-7s7 3.1 7 7"/></svg>,
   clientes: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="7" r="2.4"/><path d="M15.5 13.2c2.5.4 4.5 2.5 4.5 5.3"/></svg>,
+  grua: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M2 15h13l3-3h4v3"/><path d="M2 15V9h7l2 3"/><path d="M15 15l4-6"/><circle cx="6" cy="17.5" r="1.8"/><circle cx="18" cy="17.5" r="1.8"/></svg>,
 }
 
 export default function App() {
@@ -246,6 +248,9 @@ export default function App() {
         {view === 'cotizaciones' && (
           <Cotizaciones cotizaciones={cotizaciones} tarifasComunas={tarifasComunas} tarifaArriendo={tarifaArriendo} clientes={clientes} perfil={perfil} toast={toast} reload={loadAll} confirm={confirmDialog} openReservaDraft={openReservaDraft} />
         )}
+        {view === 'grua' && (
+          <Grua cotizaciones={cotizaciones} clientes={clientes} toast={toast} generarPdf={generarPdfCotizacion} baseDireccion={DATOS_EMPRESA.direccion} />
+        )}
       </main>
       <ReservaModal
         show={reservaModal.show} onClose={closeReserva}
@@ -294,6 +299,7 @@ function Sidebar({ perfil, view, setView, mobileOpen, onNavigate }) {
     ['clientes', 'clientes', 'Clientes'],
     ['tarifas', 'tarifas', 'Tarifas'],
     ['cotizaciones', 'cotizaciones', 'Cotizaciones'],
+    ['grua', 'grua', 'Grúa · traslados'],
   ]
   return (
     <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
@@ -1370,7 +1376,7 @@ function Tarifas({ tarifaArriendo, tarifasComunas, isAdmin, toast, reload, confi
 
 // ============================================================
 // Datos fijos del cotizador (misma información en cada cotización)
-const DATOS_EMPRESA = {
+export const DATOS_EMPRESA = {
   razon: 'Saavedra y Compañía Ltda.',
   rubro: 'Ingeniería Eléctrica y Obras Civiles',
   rut: '76.120.630-3',
@@ -1425,17 +1431,6 @@ const DESC_POR_ALTURA = {
 const ITEM_DEFAULT_DESC = DESC_POR_ALTURA[20]
 
 function nuevoItem() { return { descripcion: ITEM_DEFAULT_DESC, altura: '', unidad: 'Hora', cantidad: 1, valorUnit: 0 } }
-
-// Formatea un RUT chileno mientras se escribe: 779768414 -> 77.976.841-4 (sin que el usuario tenga que poner puntos ni guion)
-function formatRut(value) {
-  const clean = String(value).replace(/[^0-9kK]/g, '').toUpperCase()
-  if (!clean) return ''
-  const dv = clean.slice(-1)
-  let num = clean.slice(0, -1)
-  if (!num) return dv
-  num = num.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  return `${num}-${dv}`
-}
 
 // Nombre de archivo por defecto, igual al formato que ya usan: PPTO<numero>_<CLIENTE EN MAYÚSCULAS>
 function nombreArchivoDefault(numero, cliente) {
@@ -1683,7 +1678,7 @@ function renderConditionBlocks(doc, blocks, marginL, contentW, startY, F, NAVY, 
   return cy
 }
 
-async function generarPdfCotizacion(q, nombreArchivo) {
+export async function generarPdfCotizacion(q, nombreArchivo) {
   const logo = await getLogoInfo()
   const doc = new jsPDF({ unit: 'pt', format: 'letter' })
   const F = await registerFonts(doc)

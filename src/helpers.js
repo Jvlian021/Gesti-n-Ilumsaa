@@ -46,3 +46,14 @@ export function priceFor(tarifaArriendo, tarifasComunas, size, comunaName) {
   const subtotal = arriendo + traslado
   return { arriendo, traslado, subtotal, total: subtotal * 1.19 }
 }
+
+// Formatea un RUT chileno mientras se escribe: 779768414 -> 77.976.841-4 (sin que el usuario tenga que poner puntos ni guion)
+export function formatRut(value) {
+  const clean = String(value).replace(/[^0-9kK]/g, '').toUpperCase()
+  if (!clean) return ''
+  const dv = clean.slice(-1)
+  let num = clean.slice(0, -1)
+  if (!num) return dv
+  num = num.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${num}-${dv}`
+}
