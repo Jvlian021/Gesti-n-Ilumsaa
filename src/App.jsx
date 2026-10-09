@@ -436,10 +436,11 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
                 })}</tr></thead>
                 <tbody>
                   {camiones.map(c => (
-                    <tr key={c.id}>
+                    <tr key={c.id} className={c.tipo === 'Grúa' ? 'grua-row' : ''}>
                       <td className="truck-cell">
+                        {c.tipo === 'Grúa' && <span className="grua-chip">Grúa</span>}
                         <div className="tname">{c.nombre}</div>
-                        <div className="tpat">{c.tipo === 'Grúa' ? 'Grúa cama baja · ' : ''}Patente: {c.patente}</div>
+                        <div className="tpat">Patente: {c.patente}</div>
                       </td>
                       {days.map(d => {
                         const dIso = isoDate(d)
@@ -1036,10 +1037,24 @@ function Reservas({ camiones, reservas, conductores, tarifasComunas, perfil, toa
   )
 }
 
+// Las reservas de grúa usan los mismos campos que las de alza hombre (sin columnas nuevas):
+//   direccion    = "Retiro: <dirección> → Entrega: <dirección>"
+//   tipo_trabajo = "Traslado en grúa · <vehículo>"
+//   comuna       = comuna del retiro
+function leerReservaGrua(direccion, tipoTrabajo) {
+  const d = String(direccion || '').match(/^Retiro:\s*(.*?)\s*→\s*Entrega:\s*(.*)$/)
+  const t = String(tipoTrabajo || '').match(/^Traslado en grúa(?:\s*·\s*(.*))?$/)
+  return {
+    retiroDir: d ? d[1] : String(direccion || ''),
+    entregaDir: d ? d[2] : '',
+    vehiculo: t ? (t[1] || '') : String(tipoTrabajo || ''),
+  }
+}
+
 // ============================================================
 function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, clientes, perfil, toast, reload, confirm, initialCamionId, initialFecha, editReserva, initialPrefill }) {
   const today = isoDate(new Date())
-  const [form, setForm] = useState({ camionId: '', empresa: '', cliente: '', contacto: '', tipoTrabajo: '', fecha: today, hasta: '', hora: '', comuna: '', direccion: '', estado: 'Reservado', conductorId: '', descripcion: '' })
+  const [form, setForm] = useState({ camionId: '', empresa: '', cliente: '', contacto: '', tipoTrabajo: '', fecha: today, hasta: '', hora: '', comuna: '', direccion: '', estado: 'Reservado', conductorId: '', descripcion: '', retiroDir: '', entregaDir: '', vehiculo: '' })
   const isEdit = !!editReserva
 
   useEffect(() => {
@@ -1059,6 +1074,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
         estado: editReserva.estado || 'Reservado',
         conductorId: editReserva.conductor_id || '',
         descripcion: editReserva.descripcion || '',
+        ...leerReservaGrua(editReserva.direccion, editReserva.tipo_trabajo),
       })
     } else {
       setForm(f => ({
@@ -1072,6 +1088,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
         contacto: initialPrefill?.contacto || '',
         comuna: initialPrefill?.comuna || '',
         direccion: initialPrefill?.direccion || '',
+        ...leerReservaGrua(initialPrefill?.direccion, initialPrefill?.tipoTrabajo),
       }))
     }
   }, [show, initialCamionId, initialFecha, editReserva, initialPrefill]) // eslint-disable-line
@@ -1086,6 +1103,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
   if (!show) return null
 
   const esMantencion = form.estado === 'Mantención'
+  const esGrua = camiones.find(c => c.id === form.camionId)?.tipo === 'Grúa'
 
   function onChangeCliente(valor) {
     // La comuna/dirección de la reserva es el lugar de trabajo, no la dirección de la empresa,
@@ -1152,15 +1170,19 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
       return
     }
 
-    if ((!form.empresa && !form.cliente) || !form.direccion) { toast('Completa la empresa o el nombre del cliente, y la dirección'); return }
+    if (esGrua) {
+      if ((!form.empresa && !form.cliente) || !form.retiroDir.trim() || !form.entregaDir.trim()) { toast('Completa el cliente y las direcciones de retiro y entrega'); return }
+    } else if ((!form.empresa && !form.cliente) || !form.direccion) { toast('Completa la empresa o el nombre del cliente, y la dirección'); return }
+    const direccionFinal = esGrua ? `Retiro: ${form.retiroDir.trim()} → Entrega: ${form.entregaDir.trim()}` : form.direccion
+    const tipoTrabajoFinal = esGrua ? `Traslado en grúa${form.vehiculo.trim() ? ' · ' + form.vehiculo.trim() : ''}` : form.tipoTrabajo
     const dias = []
     for (let d = new Date(form.fecha + 'T00:00:00'), end = new Date(hastaFinal + 'T00:00:00'); d <= end; d.setDate(d.getDate() + 1)) {
       dias.push(isoDate(d))
     }
     const base = {
       camion_id: form.camionId, empresa: form.empresa || null, cliente: form.cliente, contacto: form.contacto || null,
-      tipo_trabajo: form.tipoTrabajo || null, hora: form.hora || null,
-      comuna: form.comuna, direccion: form.direccion, estado: form.estado,
+      tipo_trabajo: tipoTrabajoFinal || null, hora: form.hora || null,
+      comuna: form.comuna, direccion: direccionFinal, estado: form.estado,
       conductor_id: form.conductorId || null, descripcion: form.descripcion || null,
     }
     if (isEdit && dias.length === 1) {
@@ -1224,6 +1246,25 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
             </div>
           </div>
           <div className="f-group"><label>Contacto</label><input type="text" value={form.contacto} onChange={e => setForm({...form, contacto: e.target.value})} placeholder="Nombre y/o teléfono de contacto" /></div>
+          {esGrua ? (<>
+          <div className="reserva-grua-nota">Traslado en grúa cama baja</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div className="f-group"><label>Vehículo a trasladar</label>
+              <input type="text" value={form.vehiculo} onChange={e => setForm({...form, vehiculo: e.target.value})} placeholder="Marca, modelo y patente" />
+            </div>
+            <div className="f-group"><label>Hora</label><input type="time" value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} /></div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1.6fr 1fr',gap:12}}>
+            <div className="f-group"><label>Dirección de retiro</label><input type="text" value={form.retiroDir} onChange={e => setForm({...form, retiroDir: e.target.value})} placeholder="Calle, número" /></div>
+            <div className="f-group"><label>Comuna de retiro</label>
+              <input type="text" list="dl-comunas-reserva" value={form.comuna} onChange={e => setForm({...form, comuna: e.target.value})} placeholder="Escribe para buscar…" autoComplete="off" />
+            </div>
+          </div>
+          <div className="f-group"><label>Dirección de entrega</label><input type="text" value={form.entregaDir} onChange={e => setForm({...form, entregaDir: e.target.value})} placeholder="Calle, número, comuna" /></div>
+          <datalist id="dl-comunas-reserva">
+            {tarifasComunas.map(c => <option key={c.id} value={c.comuna} />)}
+          </datalist>
+          </>) : (<>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
             <div className="f-group"><label>Tipo de trabajo</label>
               <input type="text" list="dl-tipo-trabajo" value={form.tipoTrabajo} onChange={e => setForm({...form, tipoTrabajo: e.target.value})} placeholder="Escribe o elige…" autoComplete="off" />
@@ -1240,6 +1281,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
             </datalist>
           </div>
           <div className="f-group"><label>Dirección</label><input type="text" value={form.direccion} onChange={e => setForm({...form, direccion: e.target.value})} placeholder="Calle, número" /></div>
+          </>)}
           <div className="f-group"><label>Conductor</label>
             <select value={form.conductorId} onChange={e => setForm({...form, conductorId: e.target.value})}>
               <option value="">Sin asignar</option>
@@ -1247,7 +1289,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
             </select>
           </div>
           <div className="f-group"><label>Descripción</label>
-            <textarea value={form.descripcion} onChange={e => setForm({...form, descripcion: e.target.value})} placeholder="Detalles del trabajo, notas para el conductor, etc." rows={3} style={{width:'100%',padding:'9px 10px',border:'1px solid var(--border)',borderRadius:7,fontSize:'13.5px',fontFamily:'inherit',resize:'vertical'}} />
+            <textarea value={form.descripcion} onChange={e => setForm({...form, descripcion: e.target.value})} placeholder={esGrua ? 'Estado del vehículo (rueda, llaves, chocado…), notas para el conductor, etc.' : 'Detalles del trabajo, notas para el conductor, etc.'} rows={3} style={{width:'100%',padding:'9px 10px',border:'1px solid var(--border)',borderRadius:7,fontSize:'13.5px',fontFamily:'inherit',resize:'vertical'}} />
           </div>
         </>}
         <div className="modal-actions">
@@ -2087,8 +2129,8 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
         // Cotización de grúa: la reserva queda en la fila de la grúa con el recorrido completo.
         ...(g && {
           esGrua: true,
-          tipoTrabajo: 'Traslado en grúa',
-          direccion: g.esAlza ? `Obra: ${g.destino || ''}` : `Retiro: ${g.origen || ''} → Entrega: ${g.destino || ''}`,
+          direccion: g.esAlza ? `Retiro: ${g.base || 'Base Ilumsa'} → Entrega: ${g.destino || ''}` : `Retiro: ${g.origen || ''} → Entrega: ${g.destino || ''}`,
+          tipoTrabajo: g.esAlza ? 'Traslado en grúa · Alza hombres propio' : 'Traslado en grúa',
           descripcion: [g.resumen, `Cotización N° ${String(q.numero || 0).padStart(6, '0')} · ${fmtMoney(q.neto)} + IVA`].filter(Boolean).join('\n'),
         }),
       })

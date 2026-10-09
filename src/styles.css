@@ -421,3 +421,11 @@ div.rte-editable.desc-input:empty:before{content:attr(data-placeholder);color:va
 .grua-fieldset{border:none;padding:0;margin:0;min-width:0;}
 .grua-fieldset:disabled input,.grua-fieldset:disabled select,.grua-fieldset:disabled button{opacity:.6;cursor:not-allowed;}
 .grua-guardar-bar{position:sticky;top:8px;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--navy);color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;font-weight:600;box-shadow:0 8px 24px rgba(16,24,38,.2);}
+/* Grúa en el calendario: fila con color propio para no confundirla con un alza hombre */
+table.calendar tr.grua-row td{background:#FFF6EC;}
+table.calendar tr.grua-row td:first-child{border-top:2px solid var(--orange);}
+table.calendar tr.grua-row td{border-top:2px solid var(--orange);}
+table.calendar tr.grua-row td.truck-cell{background:var(--orange-bg) !important;box-shadow:inset 4px 0 0 var(--orange);}
+table.calendar tr.grua-row .tname{color:var(--orange-dark);}
+.grua-chip{display:inline-block;background:var(--orange);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:2px 7px;border-radius:20px;margin-bottom:3px;}
+.reserva-grua-nota{background:var(--orange-bg);color:var(--orange-dark);font-size:12px;font-weight:800;border-radius:7px;padding:7px 10px;margin:2px 0 12px;box-shadow:inset 3px 0 0 var(--orange);}
