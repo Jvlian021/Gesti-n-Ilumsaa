@@ -128,6 +128,7 @@ export default function App() {
   const [clientes, setClientes] = useState([])
   const [tarifaArriendo, setTarifaArriendo] = useState({})
   const [tarifasComunas, setTarifasComunas] = useState([])
+  const [tarifasGrua, setTarifasGrua] = useState(null) // fila única de tarifas_grua (compartida)
 
   // ---------- Sesión ----------
   useEffect(() => {
@@ -144,7 +145,7 @@ export default function App() {
 
   // ---------- Carga de datos + realtime ----------
   const loadAll = useCallback(async () => {
-    const [c, r, q, ta, tc, cd, cl] = await Promise.all([
+    const [c, r, q, ta, tc, cd, cl, tg] = await Promise.all([
       supabase.from('camiones').select('*').order('nombre'),
       supabase.from('reservas').select('*'),
       supabase.from('cotizaciones').select('*'),
@@ -152,6 +153,7 @@ export default function App() {
       supabase.from('tarifas_comunas').select('*').order('comuna'),
       supabase.from('conductores').select('*').order('nombre'),
       supabase.from('clientes').select('*').order('nombre'),
+      supabase.from('tarifas_grua').select('*').eq('id', 1).maybeSingle(),
     ])
     if (c.data) setCamiones(c.data)
     if (r.data) setReservas(r.data)
@@ -160,6 +162,7 @@ export default function App() {
     if (tc.data) setTarifasComunas(tc.data)
     if (cd.data) setConductores(cd.data)
     if (cl.data) setClientes(cl.data)
+    if (tg.data) setTarifasGrua(tg.data)
   }, [])
 
   useEffect(() => {
@@ -192,11 +195,13 @@ export default function App() {
   // Abre el formulario de "Nueva reserva" ya precargado con los datos de una cotización recién
   // confirmada (empresa, contacto, comuna). El camión queda sugerido según el tamaño cotizado
   // (si hay uno disponible hoy), pero siempre hay que confirmarlo/elegirlo antes de guardar.
+  // Para una cotización de grúa, el camión es directamente la grúa.
   function openReservaDraft(prefill) {
     const hoy = isoDate(new Date())
     const tamano = prefill?.tamano ? Number(prefill.tamano) : null
-    const sugerido = tamano ? camiones.find(c => c.tamano === tamano && estadoCamionFecha(c, hoy, reservas) === 'Disponible') : null
-    setReservaModal({ show: true, camionId: sugerido?.id || '', fecha: hoy, editReserva: null, prefill })
+    const grua = prefill?.esGrua ? camiones.find(c => c.tipo === 'Grúa') : null
+    const sugerido = grua || (tamano ? camiones.find(c => c.tamano === tamano && estadoCamionFecha(c, hoy, reservas) === 'Disponible') : null)
+    setReservaModal({ show: true, camionId: sugerido?.id || '', fecha: prefill?.fecha || hoy, editReserva: null, prefill })
   }
   function closeReserva() { setReservaModal(m => ({ ...m, show: false })) }
 
@@ -249,7 +254,7 @@ export default function App() {
           <Cotizaciones cotizaciones={cotizaciones} tarifasComunas={tarifasComunas} tarifaArriendo={tarifaArriendo} clientes={clientes} perfil={perfil} toast={toast} reload={loadAll} confirm={confirmDialog} openReservaDraft={openReservaDraft} />
         )}
         {view === 'grua' && (
-          <Grua cotizaciones={cotizaciones} clientes={clientes} toast={toast} generarPdf={generarPdfCotizacion} baseDireccion={DATOS_EMPRESA.direccion} />
+          <Grua cotizaciones={cotizaciones} clientes={clientes} perfil={perfil} tarifasGrua={tarifasGrua} toast={toast} reload={loadAll} generarPdf={generarPdfCotizacion} baseDireccion={DATOS_EMPRESA.direccion} />
         )}
       </main>
       <ReservaModal
@@ -333,9 +338,11 @@ function Sidebar({ perfil, view, setView, mobileOpen, onNavigate }) {
 function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, tarifasComunas, calWeekStart, setCalWeekStart, setView, toast, openReserva, openReservaEdit, reload, confirm }) {
   const today = isoDate(new Date())
   const tomorrow = isoDate(addDays(new Date(), 1))
-  const total = camiones.length
+  // Los contadores son de camiones alza hombre (la grúa es otro servicio y no se mezcla).
+  const alzas = camiones.filter(c => c.tipo !== 'Grúa')
+  const total = alzas.length
   let disp = 0, ocup = 0, mant = 0
-  camiones.forEach(c => {
+  alzas.forEach(c => {
     const est = estadoCamionFecha(c, today, reservas)
     if (est === 'Disponible') disp++
     else if (est === 'Reservado' || est === 'En Trabajo' || est === 'Pendiente') ocup++
@@ -432,7 +439,7 @@ function Dashboard({ perfil, camiones, reservas, cotizaciones, tarifaArriendo, t
                     <tr key={c.id}>
                       <td className="truck-cell">
                         <div className="tname">{c.nombre}</div>
-                        <div className="tpat">Patente: {c.patente}</div>
+                        <div className="tpat">{c.tipo === 'Grúa' ? 'Grúa cama baja · ' : ''}Patente: {c.patente}</div>
                       </td>
                       {days.map(d => {
                         const dIso = isoDate(d)
@@ -685,7 +692,7 @@ function Camiones({ camiones, isAdmin, toast, reload, confirm }) {
     if (!row.nombre || !row.patente) { toast('Nombre y patente no pueden quedar vacíos'); return }
     setSavingId(id)
     const patch = {
-      nombre: row.nombre, patente: row.patente, tamano: Number(row.tamano), aislado: row.aislado,
+      nombre: row.nombre, patente: row.patente, tamano: row.tipo === 'Grúa' ? null : Number(row.tamano), aislado: row.aislado,
       estado_general: row.estado_general, hasta: row.estado_general === 'Operativo' ? null : (row.hasta || null),
       desde: row.estado_general === 'Operativo' ? null : (row.desde || isoDate(new Date())),
     }
@@ -732,7 +739,7 @@ function Camiones({ camiones, isAdmin, toast, reload, confirm }) {
                   ? <input type="text" value={c.patente} onChange={e => editField(c.id, 'patente', e.target.value)} style={{width:100}} className="mono" />
                   : <span className="mono">{c.patente}</span>}
                 </td>
-                <td>{isAdmin ? (
+                <td>{c.tipo === 'Grúa' ? 'Grúa cama baja' : isAdmin ? (
                   <select value={c.tamano} onChange={e => editField(c.id, 'tamano', e.target.value)}>
                     <option value={13}>13 m</option><option value={18}>18 m</option><option value={20}>20 m</option>
                   </select>
@@ -1059,7 +1066,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
         camionId: initialCamionId || camiones[0]?.id || '',
         fecha: initialFecha || today,
         hasta: initialFecha || today,
-        hora: '', tipoTrabajo: '', conductorId: '', descripcion: '', estado: 'Reservado',
+        hora: '', tipoTrabajo: initialPrefill?.tipoTrabajo || '', conductorId: '', descripcion: initialPrefill?.descripcion || '', estado: 'Reservado',
         empresa: initialPrefill?.empresa || '',
         cliente: initialPrefill?.cliente || '',
         contacto: initialPrefill?.contacto || '',
@@ -1187,7 +1194,7 @@ function ReservaModal({ show, onClose, camiones, tarifasComunas, conductores, cl
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
           <div className="f-group"><label>Camión</label>
             <select value={form.camionId} onChange={e => setForm({...form, camionId: e.target.value})}>
-              {camiones.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.tamano}m)</option>)}
+              {camiones.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.tipo === 'Grúa' ? 'grúa' : `${c.tamano}m`})</option>)}
             </select>
           </div>
           <div className="f-group"><label>Estado</label>
@@ -2070,12 +2077,20 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
     // Abre el formulario de nueva reserva precargado con los datos de la cotización — solo
     // falta confirmar (o cambiar) el camión sugerido y la fecha del servicio.
     if (openReservaDraft) {
+      const g = q.tipo === 'Grúa' ? (q.detalle || {}) : null
       openReservaDraft({
         empresa: q.cliente || '',
         cliente: q.cliente_nombre_contacto || '',
         contacto: q.cliente_contacto || '',
         comuna: q.comuna || '',
         tamano: q.tamano || null,
+        // Cotización de grúa: la reserva queda en la fila de la grúa con el recorrido completo.
+        ...(g && {
+          esGrua: true,
+          tipoTrabajo: 'Traslado en grúa',
+          direccion: g.esAlza ? `Obra: ${g.destino || ''}` : `Retiro: ${g.origen || ''} → Entrega: ${g.destino || ''}`,
+          descripcion: [g.resumen, `Cotización N° ${String(q.numero || 0).padStart(6, '0')} · ${fmtMoney(q.neto)} + IVA`].filter(Boolean).join('\n'),
+        }),
       })
     }
   }
@@ -2250,6 +2265,7 @@ function Cotizaciones({ cotizaciones, tarifasComunas, tarifaArriendo, clientes, 
                 <td className="mono">{String(q.numero || 0).padStart(6, '0')}</td>
                 <td>
                   <strong>{q.cliente}</strong>
+                  {q.tipo === 'Grúa' && <span className="tag tag-grua">Grúa</span>}
                   {q.creado_por_nombre && <div style={{fontSize:11,color:'var(--mute2)',marginTop:2}}>Emitida por: {q.creado_por_nombre}</div>}
                 </td>
                 <td className="mono">{new Date(q.fecha + 'T00:00:00').toLocaleDateString('es-CL')}</td>

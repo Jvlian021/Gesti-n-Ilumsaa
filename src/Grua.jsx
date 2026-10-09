@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { supabase } from './supabaseClient'
 import { isoDate, fmtMoney, fmtInputMoney, parseMoneyInput, formatRut } from './helpers.js'
 
 // ============================================================
@@ -15,12 +16,11 @@ import { isoDate, fmtMoney, fmtInputMoney, parseMoneyInput, formatRut } from './
 // OSRM. Ambos son servicios públicos gratuitos, sin clave ni costo, pero sin garantía de
 // disponibilidad: si fallan, se avisa y los km se escriben a mano.
 //
-// Por ahora las tarifas ajustadas se guardan en el navegador (localStorage) y la cotización solo
-// se descarga en PDF, no se guarda en la base. Pendiente: tabla de tarifas compartida en Supabase,
-// guardar las cotizaciones de grúa y conectarlas con el calendario.
+// Las tarifas viven en la tabla `tarifas_grua` (una sola fila, compartida por todos). Solo la
+// administradora y los perfiles con `edita_tarifas_grua` pueden guardarlas (lo valida RLS).
+// Las cotizaciones se guardan en `cotizaciones` con tipo 'Grúa' y el detalle del traslado; al
+// confirmarlas se crea la reserva en la fila de la grúa del calendario.
 // ============================================================
-
-const PARAMS_KEY = 'ilumsa-grua-params-v1'
 
 // Valores de partida para probar: NO son precios de mercado confirmados.
 const PARAMS_DEFAULT = {
@@ -91,25 +91,6 @@ function condicionesDefault(p) {
     'Cancelaciones:',
     'Si la grúa ya salió hacia el punto de retiro, se cobrará el valor de la salida.',
   ].join('\n')
-}
-
-function leerParams() {
-  try {
-    const raw = localStorage.getItem(PARAMS_KEY)
-    if (!raw) return PARAMS_DEFAULT
-    const guardado = JSON.parse(raw)
-    // Versión anterior guardaba "factor" en base 100 (115 = +15%): se convierte a "+%".
-    for (const [viejo, nuevo] of [['factorAuto', 'extraAuto'], ['factorCamioneta', 'extraCamioneta'], ['factorFurgon', 'extraFurgon'], ['factorMaquinaria', 'extraMaquinaria']]) {
-      if (guardado[viejo] != null && guardado[nuevo] == null) guardado[nuevo] = Number(guardado[viejo]) - 100
-      delete guardado[viejo]
-    }
-    // Tarifa por km de la primera versión (muy cara frente al mercado): se reemplaza por la calibrada.
-    if (guardado.salida === 40000 && guardado.kmCargado === 1500 && guardado.kmVacio === 700) {
-      guardado.salida = PARAMS_DEFAULT.salida; guardado.kmCargado = PARAMS_DEFAULT.kmCargado; guardado.kmVacio = PARAMS_DEFAULT.kmVacio
-    }
-    delete guardado.maniobra
-    return { ...PARAMS_DEFAULT, ...guardado }
-  } catch { return PARAMS_DEFAULT }
 }
 
 function num(v) { return Number(String(v).replace(',', '.')) || 0 }
@@ -249,18 +230,38 @@ function Campo({ label, value, onChange, money, prefix, suffix, hint, placeholde
   )
 }
 
-export default function Grua({ cotizaciones = [], clientes = [], toast = () => {}, generarPdf, baseDireccion = '' }) {
-  const [p, setP] = useState(leerParams)
-  useEffect(() => { try { localStorage.setItem(PARAMS_KEY, JSON.stringify(p)) } catch { /* sin almacenamiento */ } }, [p])
-  function setParam(k, v) { setP(prev => ({ ...prev, [k]: v })) }
+export default function Grua({ cotizaciones = [], clientes = [], perfil, tarifasGrua, toast = () => {}, reload = () => {}, generarPdf, baseDireccion = '' }) {
+  // Tarifas compartidas: lo guardado en la base, completado con los valores de partida.
+  const paramsDb = useMemo(() => ({ ...PARAMS_DEFAULT, ...(tarifasGrua?.params || {}) }), [tarifasGrua])
+  const paramsDbJson = JSON.stringify(paramsDb)
+  // `p` es lo que se está usando ahora: igual a lo guardado, o con cambios aún sin guardar.
+  const [p, setP] = useState(paramsDb)
+  const [sucio, setSucio] = useState(false)
+  useEffect(() => { if (!sucio) setP(paramsDb) }, [paramsDbJson]) // eslint-disable-line react-hooks/exhaustive-deps
+  function setParam(k, v) { setP(prev => ({ ...prev, [k]: v })); setSucio(true) }
   const [verTarifas, setVerTarifas] = useState(false)
+  const [guardandoTarifas, setGuardandoTarifas] = useState(false)
+  // Sin perfil = vista de demo local (npm run dev)
+  const puedeEditar = !perfil || perfil.rol === 'Administradora' || !!perfil.edita_tarifas_grua
+
+  async function guardarTarifas() {
+    setGuardandoTarifas(true)
+    const { data, error } = await supabase.from('tarifas_grua').update({
+      params: p, actualizado_en: new Date().toISOString(),
+      actualizado_por: perfil?.id || null, actualizado_por_nombre: perfil?.nombre || null,
+    }).eq('id', 1).select()
+    setGuardandoTarifas(false)
+    // Si RLS lo bloquea, Supabase no da error: simplemente no actualiza ninguna fila.
+    if (error || !data?.length) { toast('No se pudieron guardar las tarifas' + (error ? ': ' + error.message : ' (sin permiso)')); return }
+    setSucio(false); reload(); toast('Tarifas guardadas para todos')
+  }
+  function descartarTarifas() { setP(paramsDb); setSucio(false) }
 
   // ---------- Servicio ----------
   const [tipo, setTipo] = useState('externo') // 'externo' = vehículo de un cliente · 'alzahombres' = nuestro equipo
   const [carga, setCarga] = useState('auto')
-  // La base queda guardada con su ubicación, para no buscarla cada vez
-  const [base, setBase] = useState(() => leerParams().baseLugar || null)
-  useEffect(() => { if (base) setP(prev => ({ ...prev, baseLugar: base })) }, [base])
+  // La base viene ubicada desde las tarifas (punto exacto del portón); se puede cambiar por cotización.
+  const [base, setBase] = useState(() => paramsDb.baseLugar || null)
   const [origen, setOrigen] = useState(null)
   const [destino, setDestino] = useState(null)
   const [kmIda, setKmIda] = useState('')       // base → retiro (vacío)
@@ -388,8 +389,9 @@ export default function Grua({ cotizaciones = [], clientes = [], toast = () => {
   const [clienteRut, setClienteRut] = useState('')
   const [clienteDireccion, setClienteDireccion] = useState('')
   const [clienteCorreo, setClienteCorreo] = useState('')
+  const [clienteContacto, setClienteContacto] = useState('')
   const [fecha, setFecha] = useState(isoDate(new Date()))
-  const [condiciones, setCondiciones] = useState(() => condicionesDefault(leerParams()))
+  const [condiciones, setCondiciones] = useState(() => condicionesDefault(paramsDb))
   const [generando, setGenerando] = useState(false)
 
   function onChangeCliente(valor) {
@@ -399,6 +401,7 @@ export default function Grua({ cotizaciones = [], clientes = [], toast = () => {
       if (m.rut) setClienteRut(m.rut)
       if (m.direccion) setClienteDireccion(m.direccion)
       if (m.correo) setClienteCorreo(m.correo)
+      if (m.telefono && !clienteContacto) setClienteContacto(m.telefono)
     }
   }
 
@@ -442,24 +445,54 @@ export default function Grua({ cotizaciones = [], clientes = [], toast = () => {
   const margenPct = netoCot > 0 ? ganancia / netoCot * 100 : 0
   const sobreCostoPct = c.costo > 0 ? ganancia / c.costo * 100 : 0
 
-  async function descargarPdf() {
+  // Comuna = último tramo de la dirección ("Calle 123, Maipú" → "Maipú"); sirve para la reserva.
+  const comunaDe = lugar => (lugar?.label || '').split(',').map(x => x.trim()).filter(Boolean).pop() || ''
+
+  function resetCotizacion() {
+    setCliente(''); setClienteRut(''); setClienteDireccion(''); setClienteCorreo(''); setClienteContacto('')
+    setNumero(''); setFecha(isoDate(new Date())); volverAlCalculo()
+  }
+
+  async function guardarYDescargar() {
     if (!cliente.trim()) { toast('Escribe el nombre del cliente'); return }
     if (!items.length || items.some(it => !String(it.descripcion).trim())) { toast('Completa la descripción de cada ítem'); return }
     if (!editado && faltanKm) { toast('Faltan los km de algún tramo'); return }
-    if (!generarPdf) { toast('PDF no disponible en esta vista'); return }
+    if (!Number(numeroEf)) { toast('El número de cotización no es válido'); return }
     setGenerando(true)
+    const neto = netoCot, iva = neto * 0.19
+    const cargaLabel = CARGAS.find(x => x.key === cargaEf).label
+    const resumen = [
+      esAlza ? 'Alza hombres propio' : cargaLabel,
+      ...c.maniobras.map(m => m.cond),
+      `${Math.round(c.kmTotal)} km por viaje${c.viajes === 2 ? ' · 2 viajes' : ''}`,
+      HORARIOS.find(h => h.key === horario).label + (emergencia ? ' · emergencia' : ''),
+    ].join(' · ')
+    const payload = {
+      numero: Number(numeroEf), cliente: cliente.trim(), cliente_rut: clienteRut || null,
+      cliente_direccion: clienteDireccion || null, cliente_correo: clienteCorreo || null,
+      cliente_contacto: clienteContacto.trim() || null,
+      tipo: 'Grúa', tamano: null, comuna: comunaDe(esAlza ? destino : origen) || null,
+      fecha, items, descuento_pct: 0, subtotal: neto, neto, iva, total: neto + iva, condiciones,
+      estado: 'Pendiente', creado_por: perfil?.id || null, creado_por_nombre: perfil?.nombre || null,
+      detalle: {
+        esAlza, carga: cargaEf, origen: origen?.label || null, destino: destino?.label || null, base: base?.label || null,
+        km: { ida: c.k1, carga: c.k2, vuelta: c.k3 }, viajes: c.viajes, horario, emergencia,
+        estadoVehiculo: c.maniobras.map(m => m.cond), resumen, costoEstimado: Math.round(c.costo),
+      },
+    }
+    const { error } = await supabase.from('cotizaciones').insert(payload)
+    if (error) {
+      setGenerando(false)
+      toast(error.code === '23505' ? 'Ese número de cotización ya existe, cámbialo' : 'No se pudo guardar la cotización: ' + (error.message || error.code))
+      return
+    }
     try {
-      const neto = netoCot, iva = neto * 0.19
-      const q = {
-        numero: Number(numeroEf), cliente: cliente.trim(), cliente_rut: clienteRut || null,
-        cliente_direccion: clienteDireccion || null, cliente_correo: clienteCorreo || null,
-        fecha, items, descuento_pct: 0, subtotal: neto, neto, iva, total: neto + iva, condiciones,
-      }
       const cli = cliente.trim().toUpperCase().replace(/[^A-ZÁÉÍÓÚÑ0-9 ]+/g, '').replace(/ +/g, ' ')
-      await generarPdf(q, `PPTO${String(numeroEf).padStart(4, '0')}_GRUA_${cli}`)
-      toast('PDF generado (vista previa: no se guardó)')
-    } catch { toast('No se pudo generar el PDF') }
+      if (generarPdf) await generarPdf(payload, `PPTO${String(numeroEf).padStart(4, '0')}_GRUA_${cli}`)
+      toast('Cotización guardada y PDF generado')
+    } catch { toast('La cotización se guardó, pero no se pudo generar el PDF (descárgalo desde Cotizaciones)') }
     setGenerando(false)
+    resetCotizacion(); reload()
   }
 
   const margenClase = margenPct >= 35 ? 'ok' : margenPct >= 20 ? 'medio' : 'bajo'
@@ -472,7 +505,16 @@ export default function Grua({ cotizaciones = [], clientes = [], toast = () => {
         <div className="section-sub">Calcula el valor de un traslado en grúa cama baja y genera la cotización</div>
       </div></div>
 
-      <div className="grua-preview-note">Los ajustes de tarifas se guardan en este dispositivo. Por ahora la cotización de grúa se descarga en PDF, pero aún no queda en el historial de cotizaciones.</div>
+      {sucio && puedeEditar && (
+        <div className="grua-guardar-bar">
+          <span>Cambiaste las tarifas. Se están usando en este cálculo, pero aún no se guardan para el resto del equipo.</span>
+          <div style={{display:'flex', gap:8}}>
+            <button className="btn-outline btn-sm" onClick={descartarTarifas}>Descartar</button>
+            <button className="btn-orange btn-sm" disabled={guardandoTarifas} onClick={guardarTarifas}>{guardandoTarifas ? 'Guardando…' : 'Guardar para todos'}</button>
+          </div>
+        </div>
+      )}
+
 
       <div className="grua-layout">
         <div>
@@ -563,11 +605,17 @@ export default function Grua({ cotizaciones = [], clientes = [], toast = () => {
           <div className="card">
             <div className="card-head">
               <h2>Tarifas y costos de la grúa</h2>
-              <button className="btn-outline btn-sm" onClick={() => setVerTarifas(v => !v)}>{verTarifas ? 'Ocultar' : 'Ajustar'}</button>
+              <button className="btn-outline btn-sm" onClick={() => setVerTarifas(v => !v)}>{verTarifas ? 'Ocultar' : puedeEditar ? 'Ajustar' : 'Ver'}</button>
             </div>
+            {tarifasGrua?.actualizado_por_nombre && (
+              <div className="f-hint" style={{marginTop:-8, marginBottom:8}}>
+                Última modificación: {tarifasGrua.actualizado_por_nombre} · {new Date(tarifasGrua.actualizado_en).toLocaleString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </div>
+            )}
+            {verTarifas && !puedeEditar && <div className="f-hint warn" style={{marginBottom:8}}>Solo Nicole y Julián pueden cambiar las tarifas.</div>}
             {!verTarifas && <div className="f-hint" style={{marginTop:-6}}>Petróleo {fmtMoney(p.diesel)}/L · {p.rendimiento} km/L · conductor {fmtMoney(p.conductorHora)}/h · mínimo {fmtMoney(p.minimo)}</div>}
             {verTarifas && (
-              <>
+              <fieldset className="grua-fieldset" disabled={!puedeEditar}>
                 <div className="grua-sub">Costos de la grúa (no salen en la cotización)</div>
                 <div className="param-grid">
                   <Campo label="Rendimiento grúa" value={p.rendimiento} onChange={v => setParam('rendimiento', v)} suffix="km/L" />
@@ -610,9 +658,9 @@ export default function Grua({ cotizaciones = [], clientes = [], toast = () => {
                   <Campo label="Por km vacío" value={p.kmVacio} onChange={v => setParam('kmVacio', v)} money />
                 </div>
                 <div style={{marginTop:12}}>
-                  <button className="btn-outline btn-sm" onClick={() => { setP({ ...PARAMS_DEFAULT, baseLugar: base }); toast('Valores restablecidos') }}>Volver a los valores de partida</button>
+                  <button className="btn-outline btn-sm" onClick={() => { setP({ ...PARAMS_DEFAULT }); setSucio(true) }}>Volver a los valores de partida</button>
                 </div>
-              </>
+              </fieldset>
             )}
           </div>
 
@@ -632,6 +680,9 @@ export default function Grua({ cotizaciones = [], clientes = [], toast = () => {
               <div className="f-group"><label>RUT</label><input type="text" value={clienteRut} onChange={e => setClienteRut(formatRut(e.target.value))} /></div>
               <div className="f-group"><label>Dirección</label><input type="text" value={clienteDireccion} onChange={e => setClienteDireccion(e.target.value)} /></div>
               <div className="f-group"><label>Correo</label><input type="text" value={clienteCorreo} onChange={e => setClienteCorreo(e.target.value)} /></div>
+            </div>
+            <div className="quick-row" style={{gridTemplateColumns:'1fr', marginTop:10}}>
+              <div className="f-group"><label>Contacto (no sale en el PDF; pasa a la reserva)</label><input type="text" value={clienteContacto} onChange={e => setClienteContacto(e.target.value)} placeholder="Nombre y/o teléfono" /></div>
             </div>
 
             <div className="grua-items-head">
@@ -680,6 +731,7 @@ export default function Grua({ cotizaciones = [], clientes = [], toast = () => {
 
         <aside className="grua-side">
           <div className="card grua-total-card">
+            <fieldset className="grua-fieldset" disabled={!puedeEditar}>
             <div className="seg seg-sm seg-modo">
               <button className={p.modo === 'utilidad' ? 'on' : ''} onClick={() => setParam('modo', 'utilidad')}>Costo + utilidad</button>
               <button className={p.modo === 'tarifa' ? 'on' : ''} onClick={() => setParam('modo', 'tarifa')}>Tarifa por km</button>
@@ -698,6 +750,7 @@ export default function Grua({ cotizaciones = [], clientes = [], toast = () => {
                 <div className="f-hint" style={{marginTop:2}}>Con {num(p.utilidad)}%: si el viaje te cuesta $100, cobras ${100 + num(p.utilidad)}.</div>
               </div>
             )}
+            </fieldset>
 
             <div className="gt-lbl" style={{marginTop:14}}>Precio al cliente</div>
             <div className="gt-val">{fmtMoney(netoCot)}<span> + IVA</span></div>
@@ -752,8 +805,8 @@ export default function Grua({ cotizaciones = [], clientes = [], toast = () => {
             {!c.fijo && <div className="f-hint">Aún no incluye gastos fijos (seguro, permiso, cuota de la grúa). Agrégalos en "Tarifas y costos" para que la ganancia sea real.</div>}
           </div>
 
-          <button className="btn-orange grua-pdf-btn" disabled={generando} onClick={descargarPdf}>
-            {generando ? 'Generando…' : 'Descargar PDF de la cotización'}
+          <button className="btn-orange grua-pdf-btn" disabled={generando} onClick={guardarYDescargar}>
+            {generando ? 'Guardando…' : 'Guardar y descargar PDF'}
           </button>
         </aside>
       </div>
